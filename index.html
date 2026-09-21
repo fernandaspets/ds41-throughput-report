@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A 2.8× decode regression that was not in the code — DS4.1 / RTX PRO 6000</title>
+<meta name="description" content="Measurement-driven investigation of a 2.8x DeepSeek-V4.1-Flash decode throughput regression on 4x RTX PRO 6000 (SM120): full methodology, the single-variable root cause, and the governing law.">
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --ink:#e8ecf1; --dim:#9aa4b2;
+    --line:#2a2f3a; --bad:#e0524a; --good:#3fb950; --ref:#4c8dff; --acc:#c792ea;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1080px; margin:0 auto; padding:48px 22px 96px; }
+  header { border-bottom:1px solid var(--line); padding-bottom:28px; margin-bottom:36px; }
+  .kicker { color:var(--ref); font-size:13px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; }
+  h1 { font-size:clamp(26px,4.4vw,44px); line-height:1.15; margin:14px 0 10px; letter-spacing:-.02em; }
+  h2 { font-size:clamp(20px,2.6vw,28px); margin:56px 0 14px; letter-spacing:-.01em; }
+  h3 { font-size:18px; margin:32px 0 10px; }
+  p, li { color:#cfd6df; }
+  .lede { font-size:18px; color:var(--dim); max-width:74ch; }
+  .meta { display:flex; flex-wrap:wrap; gap:8px 20px; color:var(--dim); font-size:13.5px; margin-top:18px; }
+  .meta b { color:var(--ink); font-weight:600; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; margin:26px 0 8px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .card .n { font-size:30px; font-weight:750; letter-spacing:-.02em; }
+  .card .l { color:var(--dim); font-size:13px; margin-top:4px; }
+  .card.bad .n { color:var(--bad); } .card.good .n { color:var(--good); } .card.ref .n { color:var(--ref); }
+  figure { margin:30px 0; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 16px 10px; }
+  figcaption { color:var(--dim); font-size:13.5px; margin-top:10px; padding:0 6px 6px; }
+  .tw { overflow-x:auto; margin:22px 0; border:1px solid var(--line); border-radius:12px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums; }
+  th, td { padding:9px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--line); }
+  th:first-child, td:first-child { text-align:left; white-space:normal; }
+  thead th { color:var(--dim); font-weight:600; background:#131720; position:sticky; top:0; }
+  tbody tr:hover { background:#1b1f28; }
+  tr.bad td:first-child { color:var(--bad); }
+  tr.good td:first-child { color:var(--good); }
+  tr.ref td:first-child { color:var(--ref); }
+  td.dim { color:#5c6675; }
+  code, kbd { background:#11151d; border:1px solid var(--line); border-radius:6px; padding:1.5px 6px; font-size:13px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:#d7e2ee; }
+  pre { background:#11151d; border:1px solid var(--line); border-radius:12px; padding:14px 16px; overflow-x:auto; font-size:13px; }
+  pre code { border:0; background:none; padding:0; }
+  blockquote { margin:24px 0; padding:14px 18px; border-left:3px solid var(--ref); background:var(--panel);
+    border-radius:0 12px 12px 0; color:#dbe3ec; }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--good); border-radius:0 12px 12px 0;
+    padding:14px 18px; margin:22px 0; }
+  .warn { border-left-color:#d29922; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
+  ul { padding-left:20px; } li { margin:6px 0; }
+  a { color:var(--ref); }
+  footer { margin-top:70px; padding-top:22px; border-top:1px solid var(--line); color:var(--dim); font-size:13.5px; }
+  .toc { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 20px; margin:26px 0; }
+  .toc ol { margin:6px 0 0; padding-left:22px; } .toc a { text-decoration:none; }
+  .small { font-size:13.5px; color:var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Performance investigation &middot; September 2026</div>
+  <h1>A 2.8&times; decode regression that was not in the code</h1>
+  <p class="lede">How a container launched as a <em>raw command</em> silently bypassed a hardware
+  profile&rsquo;s NCCL policy &mdash; and what that taught us about measuring an inference stack,
+  and about the ceiling we were actually hitting.</p>
+  <div class="meta">
+    <span><b>Model</b> DeepSeek-V4.1-Flash</span>
+    <span><b>Hardware</b> 4 &times; NVIDIA RTX PRO 6000 (Blackwell, SM120), PCIe, single node</span>
+    <span><b>Parallelism</b> TP4, MTP speculative decoding</span>
+    <span><b>Measurement</b> identical client, cells and knobs across lanes; <code>nsys</code> for kernels</span>
+  </div>
+</header>
+
+<div class="cards">
+  <div class="card bad"><div class="n">2.75&times;</div><div class="l">C8 decode gap, matched configuration</div></div>
+  <div class="card good"><div class="n">1</div><div class="l">environment variable caused it</div></div>
+  <div class="card bad"><div class="n">92.7%</div><div class="l">of the slow lane&rsquo;s GPU time was NCCL</div></div>
+  <div class="card ref"><div class="n">4&times;</div><div class="l">collective latency per call vs the reference</div></div>
+</div>
+
+<div class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#abstract">Abstract</a></li>
+    <li><a href="#problem">The problem</a></li>
+    <li><a href="#method">Methodology</a></li>
+    <li><a href="#solution">The solution</a></li>
+    <li><a href="#extra">Secondary findings (free speed)</a></li>
+    <li><a href="#law">The governing law</a></li>
+    <li><a href="#repro">Reproducing this, and the rules that made it findable</a></li>
+    <li><a href="#caveats">Caveats and corrections</a></li>
+    <li><a href="#data">Appendix: full data</a></li>
+  </ol>
+</div>
+
+<h2 id="abstract">1. Abstract</h2>
+<p>Two build lines of the same serving stack &mdash; same model, same four GPUs, same launch
+knobs, same benchmark client &mdash; differed by up to <b>2.8&times;</b> in decode throughput:
+the &ldquo;karmic&rdquo; line managed <b>196&nbsp;tok/s</b> at C8 where the &ldquo;jovian&rdquo; line
+did <b>541&nbsp;tok/s</b>. Prefill was only ~28% down, and the deficit grew monotonically with
+concurrency, which ruled out a fixed overhead or a broken kernel.</p>
+<p>The cause was not in either codebase. It was in <em>how the karmic lane was launched</em>.
+That image ships a layered configuration system (platform foundation &rarr; model profile &rarr;
+hardware profile &rarr; preset &rarr; explicit environment), and a raw command &mdash; running the
+serve script directly &mdash; bypasses profile resolution entirely. The lane therefore never
+received the PCIe hardware profile&rsquo;s NCCL policy, NCCL selected a poor intra-node transport,
+and <b>every collective cost ~4&nbsp;ms instead of ~0.9&nbsp;ms</b>. With roughly two collectives per
+decode step, that was ~8.8&nbsp;ms of a ~10.3&nbsp;ms step.</p>
+<p>Adding one variable, <code>NCCL_P2P_LEVEL=SYS</code>, restored the lane to
+<b>512&nbsp;tok/s</b> at C8 and, with the profile-declared graph capture size (128 instead of the
+64 we had been forcing), to <b>542&nbsp;tok/s</b> &mdash; at or above the reference.</p>
+<p>Three things came out of the investigation beyond the fix: a one-line upstream contract
+restoration worth +17% at C1; a measured map of the speculative-decoding trade-off; and a
+conservation law &mdash; <b>tokens/step &times; steps/s is constant</b> &mdash; which says the
+decode is <em>collective-bandwidth-bound</em>, so spec-decode tuning cannot raise throughput and
+only three levers can.</p>
+
+<h2 id="problem">2. The problem</h2>
+<p>Both lanes served the same checkpoint on the same node with the same client, same cells
+(30&nbsp;s, C1&times;3 &amp; C8&times;3 medians), same context settings. Only the image differed.</p>
+<figure>
+<svg viewBox="0 0 900 420" width="100%" role="img" aria-label="Decode throughput before and after the fix" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+<line x1="64" y1="28.0" x2="884" y2="28.0" stroke="#2a2f3a" stroke-width="1"/>
+<text x="56" y="32.0" fill="#9aa4b2" font-size="11" text-anchor="end">900</text>
+<line x1="64" y1="94.8" x2="884" y2="94.8" stroke="#2a2f3a" stroke-width="1"/>
+<text x="56" y="98.8" fill="#9aa4b2" font-size="11" text-anchor="end">720</text>
+<line x1="64" y1="161.6" x2="884" y2="161.6" stroke="#2a2f3a" stroke-width="1"/>
+<text x="56" y="165.6" fill="#9aa4b2" font-size="11" text-anchor="end">540</text>
+<line x1="64" y1="228.4" x2="884" y2="228.4" stroke="#2a2f3a" stroke-width="1"/>
+<text x="56" y="232.4" fill="#9aa4b2" font-size="11" text-anchor="end">360</text>
+<line x1="64" y1="295.2" x2="884" y2="295.2" stroke="#2a2f3a" stroke-width="1"/>
+<text x="56" y="299.2" fill="#9aa4b2" font-size="11" text-anchor="end">180</text>
+<line x1="64" y1="362.0" x2="884" y2="362.0" stroke="#2a2f3a" stroke-width="1"/>
+<text x="56" y="366.0" fill="#9aa4b2" font-size="11" text-anchor="end">0</text>
+<rect x="92.7" y="316.2" width="45.1" height="45.8" fill="#e0524a" rx="3"/>
+<text x="115.2" y="310.2" fill="#e8ecf1" font-size="11" text-anchor="middle">124</text>
+<rect x="143.8" y="315.9" width="45.1" height="46.1" fill="#3fb950" rx="3"/>
+<text x="166.4" y="309.9" fill="#e8ecf1" font-size="11" text-anchor="middle">124</text>
+<rect x="194.9" y="303.6" width="45.1" height="58.4" fill="#4c8dff" rx="3"/>
+<text x="217.5" y="297.6" fill="#e8ecf1" font-size="11" text-anchor="middle">157</text>
+<text x="166.5" y="384" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">C1</text>
+<rect x="297.7" y="297.5" width="45.1" height="64.5" fill="#e0524a" rx="3"/>
+<text x="320.2" y="291.5" fill="#e8ecf1" font-size="11" text-anchor="middle">174</text>
+<rect x="348.8" y="211.2" width="45.1" height="150.8" fill="#3fb950" rx="3"/>
+<text x="371.4" y="205.2" fill="#e8ecf1" font-size="11" text-anchor="middle">406</text>
+<rect x="399.9" y="222.4" width="45.1" height="139.6" fill="#4c8dff" rx="3"/>
+<text x="422.4" y="216.4" fill="#e8ecf1" font-size="11" text-anchor="middle">376</text>
+<text x="371.5" y="384" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">C4</text>
+<rect x="502.7" y="271.9" width="45.1" height="90.1" fill="#e0524a" rx="3"/>
+<text x="525.2" y="265.9" fill="#e8ecf1" font-size="11" text-anchor="middle">243</text>
+<rect x="553.8" y="160.7" width="45.1" height="201.3" fill="#3fb950" rx="3"/>
+<text x="576.3" y="154.7" fill="#e8ecf1" font-size="11" text-anchor="middle">542</text>
+<rect x="604.9" y="167.4" width="45.1" height="194.6" fill="#4c8dff" rx="3"/>
+<text x="627.4" y="161.4" fill="#e8ecf1" font-size="11" text-anchor="middle">524</text>
+<text x="576.5" y="384" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">C8</text>
+<rect x="707.7" y="285.9" width="45.1" height="76.1" fill="#e0524a" rx="3"/>
+<text x="730.2" y="279.9" fill="#e8ecf1" font-size="11" text-anchor="middle">205</text>
+<rect x="758.8" y="47.0" width="45.1" height="315.0" fill="#3fb950" rx="3"/>
+<text x="781.4" y="41.0" fill="#e8ecf1" font-size="11" text-anchor="middle">849</text>
+<rect x="809.9" y="61.6" width="45.1" height="300.4" fill="#4c8dff" rx="3"/>
+<text x="832.5" y="55.6" fill="#e8ecf1" font-size="11" text-anchor="middle">809</text>
+<text x="781.5" y="384" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">C16</text>
+<text x="64" y="18" fill="#9aa4b2" font-size="11">aggregate decode tok/s (higher is better)</text>
+<rect x="70" y="394" width="10" height="10" fill="#e0524a" rx="2"/>
+<text x="86" y="403" fill="#9aa4b2" font-size="11">karmic (raw launch)</text>
+<rect x="270" y="394" width="10" height="10" fill="#3fb950" rx="2"/>
+<text x="286" y="403" fill="#9aa4b2" font-size="11">karmic (fixed)</text>
+<rect x="470" y="394" width="10" height="10" fill="#4c8dff" rx="2"/>
+<text x="486" y="403" fill="#9aa4b2" font-size="11">jovian (reference)</text>
+</svg>
+<figcaption><b>Decode throughput, before and after.</b> The raw karmic launch loses ground
+sharply as concurrency rises &mdash; 1.3&times; at C1, 2.2&times; at C4, 2.2&times; at C8, and 4.1&times; at C16
+&mdash; while the fixed configuration matches or beats the reference everywhere except C1.</figcaption>
+</figure>
+<div class="tw"><table><thead><tr><th>configuration</th><th>C1</th><th>C4</th><th>C8</th><th>C16</th><th>prefill 8k</th><th>prefill 32k</th><th>prefill 128k</th></tr></thead><tbody>
+<tr class="ref"><td>jovian line (reference)</td><td>157.3</td><td>376.3</td><td>524.4</td><td>809.4</td><td>10,904</td><td>10,430</td><td>9,405</td></tr>
+<tr class="bad"><td>karmic, raw launch</td><td>123.5</td><td>173.8</td><td>242.8</td><td>205.1</td><td>7,552</td><td>7,505</td><td>7,240</td></tr>
+<tr class="bad"><td>karmic, raw + NCCL_NET_PLUGIN=none only</td><td>116.8</td><td>144.9</td><td>137.3</td><td>256.5</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="bad"><td>karmic, raw + NCCL_IB_DISABLE=1 only</td><td>120.2</td><td>152.6</td><td>132.2</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="bad"><td>karmic, raw + b12x PCIe all-reduce only</td><td>127.9</td><td>206.6</td><td>213.6</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="good"><td>karmic, raw + NCCL_P2P_LEVEL=SYS only</td><td>139.8</td><td>405.2</td><td>511.8</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="good"><td>karmic, intended hardware profile</td><td>139.0</td><td>409.0</td><td>550.1</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="good"><td>karmic, fixed base + capture 128</td><td>124.1</td><td>406.4</td><td>542.5</td><td>848.8</td><td>11,195</td><td>10,787</td><td>9,750</td></tr>
+<tr class="good"><td>karmic, + MTP3</td><td>158.6</td><td>378.9</td><td>546.6</td><td>818.6</td><td>11,263</td><td>10,815</td><td>9,763</td></tr>
+<tr class="good"><td>karmic, + PR #810 (one line)</td><td>144.8</td><td>400.0</td><td>549.9</td><td>832.2</td><td>11,198</td><td>10,792</td><td>9,725</td></tr>
+<tr class="good"><td>karmic, MTP3 + PR #810</td><td>151.5</td><td>377.8</td><td>579.6</td><td>805.4</td><td>11,202</td><td>10,801</td><td>9,762</td></tr>
+</tbody></table></div>
+<p class="small">All values aggregate decode tok/s; C1 and C8 are medians of three 30-second
+cells, C4/C16 are single cells. Rows are grouped by outcome: the first four are the broken
+configurations, the last five are recovered ones. Full provenance in the
+<a href="#data">appendix</a>.</p>
+
+<h3>The shape of the gap is the first clue</h3>
+<ul>
+  <li><b>Decode-only.</b> Prefill was 7,552&nbsp;tok/s on the slow lane versus 10,904 on the
+  reference &mdash; a 28% deficit, not 2.8&times;. Whatever it was, it punished the decode step
+  disproportionately.</li>
+  <li><b>Growing with concurrency.</b> C1 was nearly at parity; the penalty scaled with the
+  number of rows per step. That is the signature of something that scales with the <em>batch
+  payload</em> &mdash; not of a fixed per-step overhead.</li>
+  <li><b>Both lines equally bad when graphs are off.</b> With CUDA graphs disabled, both lanes
+  collapsed to ~8&nbsp;tok/s (section 3.5). The deficit existed <em>only</em> inside the graph
+  path, so it was not host-side Python overhead.</li>
+</ul>
+
+<h2 id="method">3. Methodology</h2>
+<p>Six things, in the order they mattered.</p>
+
+<h3>3.1 Matched configuration or nothing</h3>
+<p>Every comparison held the model, GPUs, client, cells, capture size, speculative depth and
+scheduler limits identical, and changed exactly one thing. The first matched pair took a full
+day to construct (four boots) because we kept discovering knobs we had been silently
+overriding.</p>
+
+<h3>3.2 Elimination by measurement, not by argument</h3>
+<p>Each hypothesis was killed with numbers rather than reasoning:</p>
+<ul>
+  <li><b>Stale commits</b> &mdash; a 54-commit-stale snapshot measured identical.</li>
+  <li><b>Library versions</b> &mdash; both lines shipped the same package version; a kernel-level
+  diff harness showed the reference and our kernels agreeing bit-exactly on quantisation, GEMM
+  and the scheduler-side math (MXFP8 quantisation and FP8 GEMM were <em>exactly</em> equal).</li>
+  <li><b>The autotuner</b> &mdash; selection caches differed for 296 of 1122 shared workloads, and
+  reverting the suspected timing change moved nothing (189 vs 174 at C4).</li>
+  <li><b>Speculative decoding</b> &mdash; acceptance differed by only 12%, against a 175% gap.</li>
+  <li><b>Our own patches, the model entrypoint, plan caches, breakable graphs, the PCIe flag</b>
+  &mdash; each measured, none responsible.</li>
+</ul>
+
+<h3>3.3 The trap that cost half a day: tests under a dominant bottleneck are void</h3>
+<blockquote>The slow lane spent <b>92.7% of its GPU time inside NCCL</b>. Every A/B we ran on
+that lane &mdash; library tuning, kernel selection, graph settings &mdash; was measured through a
+bottleneck five times larger than the effect being tested. Those results were not
+&ldquo;eliminations&rdquo;; they were <em>unmeasured</em>.</blockquote>
+<p>This is the single most transferable lesson in the report. We rebuilt the list of
+&ldquo;void&rdquo; results and re-ran the cheap ones after the fix; one of them (a b12x MoE tuning
+contract) turned out to be genuinely neutral, but we could not have known that beforehand.</p>
+
+<h3>3.4 Profile out-of-process, because the in-process profiler wedges the engine</h3>
+<p>vLLM&rsquo;s PyTorch profiler was unusable here: after <code>stop_profile</code> the workers
+logged <code>profiler_stop</code> and then hung, rank traces stayed truncated, and a later
+<code>/start_profile</code> returned HTTP 000. Three attempts, three hangs.</p>
+<p>We switched to <code>nsys</code>, which profiles out of process. Two constraints made it work:
+CUPTI cannot attach to a running process, so the profiler must be the <em>parent</em> of the
+engine (we re-exec the image&rsquo;s own entrypoint underneath it, preserving profile resolution);
+and the capture is triggered through the CUDA profiler API by running vLLM&rsquo;s profiler in
+<code>cuda</code> mode, so <code>nsys</code> records exactly the benchmark window and nothing else.</p>
+
+<h3>3.5 A cheap discriminator: disable graphs, compare both lanes</h3>
+<figure>
+<svg viewBox="0 0 900 260" width="100%" role="img" aria-label="Eager vs CUDA graphs" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+<line x1="64" y1="26.0" x2="884" y2="26.0" stroke="#2a2f3a"/>
+<text x="56" y="30.0" fill="#9aa4b2" font-size="11" text-anchor="end">170</text>
+<line x1="64" y1="71.5" x2="884" y2="71.5" stroke="#2a2f3a"/>
+<text x="56" y="75.5" fill="#9aa4b2" font-size="11" text-anchor="end">128</text>
+<line x1="64" y1="117.0" x2="884" y2="117.0" stroke="#2a2f3a"/>
+<text x="56" y="121.0" fill="#9aa4b2" font-size="11" text-anchor="end">85</text>
+<line x1="64" y1="162.5" x2="884" y2="162.5" stroke="#2a2f3a"/>
+<text x="56" y="166.5" fill="#9aa4b2" font-size="11" text-anchor="end">42</text>
+<line x1="64" y1="208.0" x2="884" y2="208.0" stroke="#2a2f3a"/>
+<text x="56" y="212.0" fill="#9aa4b2" font-size="11" text-anchor="end">0</text>
+<rect x="146.0" y="199.8" width="70" height="8.2" fill="#e0524a" rx="3"/>
+<text x="181.0" y="192.8" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">7.7</text>
+<text x="181.0" y="226" fill="#9aa4b2" font-size="11" text-anchor="middle">eager</text>
+<rect x="236.0" y="74.2" width="70" height="133.8" fill="#3fb950" rx="3"/>
+<text x="271.0" y="67.2" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">125.0</text>
+<text x="271.0" y="226" fill="#9aa4b2" font-size="11" text-anchor="middle">CUDA graphs</text>
+<text x="269.0" y="246" fill="#e8ecf1" font-size="12" text-anchor="middle" font-weight="600">karmic</text>
+<rect x="556.0" y="200.1" width="70" height="7.9" fill="#e0524a" rx="3"/>
+<text x="591.0" y="193.1" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">7.4</text>
+<text x="591.0" y="226" fill="#9aa4b2" font-size="11" text-anchor="middle">eager</text>
+<rect x="646.0" y="41.0" width="70" height="167.0" fill="#3fb950" rx="3"/>
+<text x="681.0" y="34.0" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">156.0</text>
+<text x="681.0" y="226" fill="#9aa4b2" font-size="11" text-anchor="middle">CUDA graphs</text>
+<text x="679.0" y="246" fill="#e8ecf1" font-size="12" text-anchor="middle" font-weight="600">jovian line</text>
+<text x="64" y="18" fill="#9aa4b2" font-size="11">C1 tok/s — with graphs off, both lines collapse to the same ~8 tok/s</text>
+</svg>
+<figcaption><b>Eager vs graphs.</b> With CUDA graphs off, the two lines are indistinguishable
+(7.7 vs 7.4&nbsp;tok/s at C1) and both are ~16&times; slower than the reference in graph mode.
+This one boot proved the deficit lived inside the captured-graph path and scaled with batch
+rows &mdash; not in the Python model loop.</figcaption>
+</figure>
+
+<h3>3.6 Bisect to a single variable</h3>
+<p>With the profile out-of-process we could see the kernel mix:</p>
+<figure>
+<svg viewBox="0 0 900 330" width="100%" role="img" aria-label="GPU time in NCCL collectives, measured out-of-process with nsys" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+<rect x="137.8" y="30.0" width="135.7" height="226.0" fill="#232833" rx="3"/>
+<rect x="137.8" y="46.5" width="135.7" height="209.5" fill="#e0524a" rx="3"/>
+<text x="205.7" y="38.5" fill="#e8ecf1" font-size="14" text-anchor="middle" font-weight="700">92.7%</text>
+<text x="205.7" y="276" fill="#e8ecf1" font-size="12" text-anchor="middle">karmic, raw launch</text>
+<text x="205.7" y="294" fill="#9aa4b2" font-size="11" text-anchor="middle">AllReduce 4,010 µs/call</text>
+<text x="205.7" y="309" fill="#9aa4b2" font-size="11" text-anchor="middle">AllGather 4,450 µs/call</text>
+<rect x="409.2" y="30.0" width="135.7" height="226.0" fill="#232833" rx="3"/>
+<rect x="409.2" y="83.3" width="135.7" height="172.7" fill="#e0524a" rx="3"/>
+<text x="477.0" y="75.3" fill="#e8ecf1" font-size="14" text-anchor="middle" font-weight="700">76.4%</text>
+<text x="477.0" y="276" fill="#e8ecf1" font-size="12" text-anchor="middle">jovian line (reference)</text>
+<text x="477.0" y="294" fill="#9aa4b2" font-size="11" text-anchor="middle">AllReduce 860 µs/call</text>
+<text x="477.0" y="309" fill="#9aa4b2" font-size="11" text-anchor="middle">AllGather 1,300 µs/call</text>
+<rect x="680.5" y="30.0" width="135.7" height="226.0" fill="#232833" rx="3"/>
+<rect x="680.5" y="99.9" width="135.7" height="156.1" fill="#e0524a" rx="3"/>
+<text x="748.3" y="91.9" fill="#e8ecf1" font-size="14" text-anchor="middle" font-weight="700">69.1%</text>
+<text x="748.3" y="276" fill="#e8ecf1" font-size="12" text-anchor="middle">karmic, fixed base</text>
+<text x="748.3" y="294" fill="#9aa4b2" font-size="11" text-anchor="middle">AllReduce 1,003 µs/call</text>
+<text x="748.3" y="309" fill="#9aa4b2" font-size="11" text-anchor="middle">AllGather 702 µs/call</text>
+<text x="70" y="20" fill="#9aa4b2" font-size="11">red = share of GPU kernel time inside NCCL collectives (C8 window)</text>
+</svg>
+<figcaption><b>Where the GPU time actually went.</b> On the raw launch, 92.7% of kernel time was
+NCCL, at <b>4.01&nbsp;ms</b> per AllReduce and <b>4.45&nbsp;ms</b> per AllGather. The reference paid
+0.86 and 1.30&nbsp;ms for the same operations. Every model kernel &mdash; MoE phases, dense GEMM,
+sparse attention &mdash; was <b>&le;1.6%</b>. The regression was never in the model.</figcaption>
+</figure>
+<p>That pointed at transport configuration, so we added candidate variables one at a time:</p>
+<figure>
+<svg viewBox="0 0 900 300" width="100%" role="img" aria-label="Isolating the single variable at C8" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+<text x="290" y="42.2" fill="#9aa4b2" font-size="12" text-anchor="end">raw launch (baseline)</text>
+<rect x="300" y="26.0" width="214.5" height="22.3" fill="#e0524a" rx="3"/>
+<text x="522.5" y="42.2" fill="#e8ecf1" font-size="12">243</text>
+<text x="290" y="78.2" fill="#9aa4b2" font-size="12" text-anchor="end">+ NCCL_NET_PLUGIN=none</text>
+<rect x="300" y="62.0" width="121.3" height="22.3" fill="#e0524a" rx="3"/>
+<text x="429.3" y="78.2" fill="#e8ecf1" font-size="12">137</text>
+<text x="290" y="114.2" fill="#9aa4b2" font-size="12" text-anchor="end">+ NCCL_IB_DISABLE=1</text>
+<rect x="300" y="98.0" width="116.8" height="22.3" fill="#e0524a" rx="3"/>
+<text x="424.8" y="114.2" fill="#e8ecf1" font-size="12">132</text>
+<text x="290" y="150.2" fill="#9aa4b2" font-size="12" text-anchor="end">+ b12x PCIe all-reduce</text>
+<rect x="300" y="134.0" width="188.7" height="22.3" fill="#e0524a" rx="3"/>
+<text x="496.7" y="150.2" fill="#e8ecf1" font-size="12">214</text>
+<text x="290" y="186.2" fill="#9aa4b2" font-size="12" text-anchor="end">+ NCCL_P2P_LEVEL=SYS  ← the fix</text>
+<rect x="300" y="170.0" width="452.1" height="22.3" fill="#3fb950" rx="3"/>
+<text x="760.1" y="186.2" fill="#e8ecf1" font-size="12">512</text>
+<text x="290" y="222.2" fill="#9aa4b2" font-size="12" text-anchor="end">+ P2P + PROTO + TUNER=none</text>
+<rect x="300" y="206.0" width="482.7" height="22.3" fill="#3fb950" rx="3"/>
+<text x="790.7" y="222.2" fill="#e8ecf1" font-size="12">546</text>
+<text x="290" y="258.2" fill="#9aa4b2" font-size="12" text-anchor="end">intended hardware profile</text>
+<rect x="300" y="242.0" width="485.9" height="22.3" fill="#3fb950" rx="3"/>
+<text x="793.9" y="258.2" fill="#e8ecf1" font-size="12">550</text>
+<text x="300" y="14" fill="#9aa4b2" font-size="11">C8 aggregate tok/s — each row adds exactly one thing to the raw launch</text>
+</svg>
+<figcaption><b>Isolating the cause.</b> Disabling the Spectrum-X network plugin
+(<code>NCCL_NET_PLUGIN=none</code>) did nothing; neither did <code>NCCL_IB_DISABLE=1</code> nor the
+b12x PCIe all-reduce path. <b><code>NCCL_P2P_LEVEL=SYS</code> alone</b> recovered it. The plugin we
+had initially blamed turned out to be innocent &mdash; the intended profile still carries it and
+still runs at 550&nbsp;tok/s.</figcaption>
+</figure>
+
+<h2 id="solution">4. The solution</h2>
+<p>Not a code change: a launch change. The karmic image expects its configuration to be composed by
+its runtime, and its README says so plainly &mdash; raw commands bypass profile resolution.
+Applying the PCIe hardware profile&rsquo;s NCCL policy (or, minimally,
+<code>NCCL_P2P_LEVEL=SYS</code>) is the fix.</p>
+<div class="note">
+<b>The minimal reproducer.</b> Same image, same knobs, same client. Add one environment variable:
+<pre><code>docker run &hellip; -e NCCL_P2P_LEVEL=SYS &hellip;   # C8: 196 &rarr; 512 tok/s
+                                        # with capture 128: 542 tok/s</code></pre>
+</div>
+<h3>Why it works</h3>
+<p><code>NCCL_P2P_LEVEL</code> selects the peer-to-peer transport for intra-node collectives.
+Without it, NCCL chose a path unsuited to this multi-root PCIe topology, and the cost appeared
+as per-call latency on every collective &mdash; which the graph path could not hide, because the
+collectives are the graph. With the policy set, per-call cost dropped to reference levels
+(1.00&nbsp;ms AllReduce, 0.70&nbsp;ms AllGather) and throughput returned.</p>
+<figure>
+<svg viewBox="0 0 900 340" width="100%" role="img" aria-label="Prefill throughput" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+<line x1="64" y1="26.0" x2="884" y2="26.0" stroke="#2a2f3a"/>
+<text x="56" y="30.0" fill="#9aa4b2" font-size="11" text-anchor="end">12,000</text>
+<line x1="64" y1="90.5" x2="884" y2="90.5" stroke="#2a2f3a"/>
+<text x="56" y="94.5" fill="#9aa4b2" font-size="11" text-anchor="end">9,000</text>
+<line x1="64" y1="155.0" x2="884" y2="155.0" stroke="#2a2f3a"/>
+<text x="56" y="159.0" fill="#9aa4b2" font-size="11" text-anchor="end">6,000</text>
+<line x1="64" y1="219.5" x2="884" y2="219.5" stroke="#2a2f3a"/>
+<text x="56" y="223.5" fill="#9aa4b2" font-size="11" text-anchor="end">3,000</text>
+<line x1="64" y1="284.0" x2="884" y2="284.0" stroke="#2a2f3a"/>
+<text x="56" y="288.0" fill="#9aa4b2" font-size="11" text-anchor="end">0</text>
+<rect x="102.3" y="121.6" width="60.1" height="162.4" fill="#e0524a" rx="3"/>
+<text x="132.3" y="115.6" fill="#e8ecf1" font-size="11" text-anchor="middle">7,552</text>
+<rect x="168.4" y="43.3" width="60.1" height="240.7" fill="#3fb950" rx="3"/>
+<text x="198.5" y="37.3" fill="#e8ecf1" font-size="11" text-anchor="middle">11,195</text>
+<rect x="234.5" y="49.6" width="60.1" height="234.4" fill="#4c8dff" rx="3"/>
+<text x="264.6" y="43.6" fill="#e8ecf1" font-size="11" text-anchor="middle">10,904</text>
+<text x="200.7" y="306" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">context 8k</text>
+<rect x="375.6" y="122.6" width="60.1" height="161.4" fill="#e0524a" rx="3"/>
+<text x="405.7" y="116.6" fill="#e8ecf1" font-size="11" text-anchor="middle">7,505</text>
+<rect x="441.7" y="52.1" width="60.1" height="231.9" fill="#3fb950" rx="3"/>
+<text x="471.8" y="46.1" fill="#e8ecf1" font-size="11" text-anchor="middle">10,787</text>
+<rect x="507.9" y="59.8" width="60.1" height="224.2" fill="#4c8dff" rx="3"/>
+<text x="537.9" y="53.8" fill="#e8ecf1" font-size="11" text-anchor="middle">10,430</text>
+<text x="474.0" y="306" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">context 32k</text>
+<rect x="648.9" y="128.3" width="60.1" height="155.7" fill="#e0524a" rx="3"/>
+<text x="679.0" y="122.3" fill="#e8ecf1" font-size="11" text-anchor="middle">7,240</text>
+<rect x="715.1" y="74.4" width="60.1" height="209.6" fill="#3fb950" rx="3"/>
+<text x="745.1" y="68.4" fill="#e8ecf1" font-size="11" text-anchor="middle">9,750</text>
+<rect x="781.2" y="81.8" width="60.1" height="202.2" fill="#4c8dff" rx="3"/>
+<text x="811.3" y="75.8" fill="#e8ecf1" font-size="11" text-anchor="middle">9,405</text>
+<text x="747.3" y="306" fill="#e8ecf1" font-size="13" text-anchor="middle" font-weight="600">context 128k</text>
+<rect x="84" y="314" width="10" height="10" fill="#e0524a" rx="2"/>
+<text x="100" y="323" fill="#9aa4b2" font-size="11">karmic (raw)</text>
+<rect x="344" y="314" width="10" height="10" fill="#3fb950" rx="2"/>
+<text x="360" y="323" fill="#9aa4b2" font-size="11">karmic (fixed, capture 128)</text>
+<rect x="604" y="314" width="10" height="10" fill="#4c8dff" rx="2"/>
+<text x="620" y="323" fill="#9aa4b2" font-size="11">jovian (reference)</text>
+<text x="64" y="18" fill="#9aa4b2" font-size="11">prefill tok/s</text>
+</svg>
+<figcaption><b>Prefill, same fix.</b> The &ldquo;prefill deficit&rdquo; we had recorded for a day
+(7.5k&ndash;8.3k tok/s) was the same collective problem. On the fixed configuration prefill is
+11.2k / 10.8k / 9.8k at 8k / 32k / 128k context &mdash; at or above the reference.</figcaption>
+</figure>
+
+<h2 id="extra">5. Secondary findings (free speed)</h2>
+<p>Once the bottleneck was gone, smaller levers became measurable &mdash; several of which had
+been invisible before, and one of which we had been actively fighting.</p>
+<div class="grid2">
+  <div class="card"><div class="n" style="font-size:22px">Capture 128, not 64</div>
+  <div class="l">The model profile declares a 128-token graph-capture ceiling; we had been
+  overriding it to 64. Restoring 128 won every cell (C8 496&rarr;542, C16 811&rarr;849) and beat the
+  reference. The 64 was self-inflicted and masked while collectives dominated.</div></div>
+  <div class="card"><div class="n" style="font-size:22px">+17% C1 from one line</div>
+  <div class="l">An upstream PR restores a single declaration
+  (<code>immutable_input_scales=True</code>) that a migration had dropped, worth ~1.5&times; on MoE
+  kernels. It was missing from <em>every</em> lane we ran. Applying it lifted C1 124&rarr;145 and
+  produced our best C8 (550 alone, 580 combined with MTP3).</div></div>
+  <div class="card"><div class="n" style="font-size:22px">Shorter drafts win C1</div>
+  <div class="l">Reducing speculative depth from 7 to 3 raised C1 by <b>28%</b> (124&rarr;159),
+  because a short draft chain is fully utilised: the adaptive verifier accepts verification depth
+  2.89/3 versus only 1.38/7. Depth is a latency/throughput dial, not a free win.</div></div>
+  <div class="card"><div class="n" style="font-size:22px">The intended PCIe path is not faster</div>
+  <div class="l">The hardware profile&rsquo;s b12x PCIe all-reduce measured neutral-to-worse against
+  plain NCCL with the correct policy (+11% C1 without it). The NCCL policy was the fix; the
+  transport choice was not.</div></div>
+</div>
+<h3>Speculative depth surface (measured)</h3>
+<div class="tw"><table><thead><tr><th>speculative depth</th><th>acceptance (tok/step)</th><th>C1</th><th>C4</th><th>C8</th><th>C16</th></tr></thead><tbody>
+<tr class="good"><td>MTP3</td><td>3.4</td><td>158.6</td><td>378.9</td><td>546.6</td><td>818.6</td></tr>
+<tr class="ref"><td>MTP5</td><td>4.2</td><td>148.2</td><td>393.6</td><td>568.9</td><td>788.9</td></tr>
+<tr><td>MTP7</td><td>2.0</td><td>124.1</td><td>406.4</td><td>542.5</td><td>848.8</td></tr>
+</tbody></table></div>
+<p class="small">Acceptance rises monotonically with depth, but C1 <em>falls</em>: a single
+request cannot amortise the extra verification work. C8 peaks at depth 5, C16 at depth 7.</p>
+
+<h2 id="law">6. The governing law</h2>
+<p>The most useful result is not the fix, it is what the fix exposed. Across <em>every</em>
+spec-decode, cost-scale, breakable-graph and tuning configuration we measured, C8 throughput
+landed between <b>537 and 580&nbsp;tok/s</b> &mdash; while acceptance ranged from 2.03 to 4.25 tokens
+per step.</p>
+<figure>
+<svg viewBox="0 0 900 430" width="100%" role="img" aria-label="The conservation law: tokens per step versus steps per second" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial">
+<line x1="74" y1="368.0" x2="874" y2="368.0" stroke="#2a2f3a"/>
+<text x="66" y="372.0" fill="#9aa4b2" font-size="11" text-anchor="end">100</text>
+<line x1="74" y1="283.5" x2="874" y2="283.5" stroke="#2a2f3a"/>
+<text x="66" y="287.5" fill="#9aa4b2" font-size="11" text-anchor="end">150</text>
+<line x1="74" y1="199.0" x2="874" y2="199.0" stroke="#2a2f3a"/>
+<text x="66" y="203.0" fill="#9aa4b2" font-size="11" text-anchor="end">200</text>
+<line x1="74" y1="114.5" x2="874" y2="114.5" stroke="#2a2f3a"/>
+<text x="66" y="118.5" fill="#9aa4b2" font-size="11" text-anchor="end">250</text>
+<line x1="74" y1="30.0" x2="874" y2="30.0" stroke="#2a2f3a"/>
+<text x="66" y="34.0" fill="#9aa4b2" font-size="11" text-anchor="end">300</text>
+<line x1="74.0" y1="30" x2="74.0" y2="368" stroke="#2a2f3a" stroke-dasharray="2,4"/>
+<text x="74.0" y="388" fill="#9aa4b2" font-size="11" text-anchor="middle">1.8</text>
+<line x1="207.3" y1="30" x2="207.3" y2="368" stroke="#2a2f3a" stroke-dasharray="2,4"/>
+<text x="207.3" y="388" fill="#9aa4b2" font-size="11" text-anchor="middle">2.2</text>
+<line x1="340.7" y1="30" x2="340.7" y2="368" stroke="#2a2f3a" stroke-dasharray="2,4"/>
+<text x="340.7" y="388" fill="#9aa4b2" font-size="11" text-anchor="middle">2.7</text>
+<line x1="474.0" y1="30" x2="474.0" y2="368" stroke="#2a2f3a" stroke-dasharray="2,4"/>
+<text x="474.0" y="388" fill="#9aa4b2" font-size="11" text-anchor="middle">3.2</text>
+<line x1="607.3" y1="30" x2="607.3" y2="368" stroke="#2a2f3a" stroke-dasharray="2,4"/>
+<text x="607.3" y="388" fill="#9aa4b2" font-size="11" text-anchor="middle">3.6</text>
+<line x1="740.7" y1="30" x2="740.7" y2="368" stroke="#2a2f3a" stroke-dasharray="2,4"/>
+<text x="740.7" y="388" fill="#9aa4b2" font-size="11" text-anchor="middle">4.0</text>
+<line x1="874.0" y1="30" x2="874.0" y2="368" stroke="#2a2f3a" stroke-dasharray="2,4"/>
+<text x="874.0" y="388" fill="#9aa4b2" font-size="11" text-anchor="middle">4.5</text>
+<polyline points="85.9,31.8 91.8,37.3 97.7,42.6 103.6,47.8 109.6,52.9 115.5,57.9 121.4,62.8 127.3,67.6 133.3,72.2 139.2,76.9 145.1,81.4 151.0,85.8 157.0,90.1 162.9,94.4 168.8,98.6 174.7,102.7 180.7,106.7 186.6,110.6 192.5,114.5 198.4,118.3 204.4,122.0 210.3,125.7 216.2,129.3 222.1,132.9 228.1,136.4 234.0,139.8 239.9,143.1 245.9,146.5 251.8,149.7 257.7,152.9 263.6,156.1 269.6,159.2 275.5,162.2 281.4,165.2 287.3,168.2 293.3,171.1 299.2,173.9 305.1,176.7 311.0,179.5 317.0,182.2 322.9,184.9 328.8,187.6 334.7,190.2 340.7,192.7 346.6,195.3 352.5,197.8 358.4,200.2 364.4,202.6 370.3,205.0 376.2,207.4 382.1,209.7 388.1,212.0 394.0,214.3 399.9,216.5 405.9,218.7 411.8,220.8 417.7,223.0 423.6,225.1 429.6,227.2 435.5,229.2 441.4,231.2 447.3,233.2 453.3,235.2 459.2,237.2 465.1,239.1 471.0,241.0 477.0,242.9 482.9,244.7 488.8,246.5 494.7,248.3 500.7,250.1 506.6,251.9 512.5,253.6 518.4,255.3 524.4,257.0 530.3,258.7 536.2,260.4 542.1,262.0 548.1,263.6 554.0,265.2 559.9,266.8 565.9,268.4 571.8,269.9 577.7,271.4 583.6,272.9 589.6,274.4 595.5,275.9 601.4,277.4 607.3,278.8 613.3,280.2 619.2,281.6 625.1,283.0 631.0,284.4 637.0,285.8 642.9,287.1 648.8,288.5 654.7,289.8 660.7,291.1 666.6,292.4 672.5,293.7 678.4,294.9 684.4,296.2 690.3,297.4 696.2,298.7 702.1,299.9 708.1,301.1 714.0,302.3 719.9,303.5 725.9,304.6 731.8,305.8 737.7,306.9 743.6,308.1 749.6,309.2 755.5,310.3 761.4,311.4 767.3,312.5 773.3,313.6 779.2,314.6 785.1,315.7 791.0,316.7 797.0,317.8 802.9,318.8 808.8,319.8 814.7,320.8 820.7,321.8 826.6,322.8 832.5,323.8 838.4,324.8 844.4,325.7 850.3,326.7 856.2,327.7 862.1,328.6 868.1,329.5 874.0,330.4" fill="none" stroke="#c792ea" stroke-width="2" stroke-dasharray="6,4"/>
+<circle cx="142.1" cy="-379.8" r="6" fill="#4c8dff" stroke="#0f1115" stroke-width="2"/>
+<circle cx="708.1" cy="-378.8" r="6" fill="#4c8dff" stroke="#0f1115" stroke-width="2"/>
+<circle cx="799.9" cy="-369.9" r="6" fill="#4c8dff" stroke="#0f1115" stroke-width="2"/>
+<circle cx="554.0" cy="-386.8" r="6" fill="#4c8dff" stroke="#0f1115" stroke-width="2"/>
+<circle cx="785.1" cy="-424.4" r="6" fill="#3fb950" stroke="#0f1115" stroke-width="2"/>
+<circle cx="459.2" cy="-416.2" r="6" fill="#3fb950" stroke="#0f1115" stroke-width="2"/>
+<circle cx="548.1" cy="-442.5" r="6" fill="#3fb950" stroke="#0f1115" stroke-width="2"/>
+<text x="868" y="46" fill="#c792ea" font-size="12" text-anchor="end">dashed = constant 550 tok/s (tokens/step × steps/s)</text>
+<text x="74" y="20" fill="#9aa4b2" font-size="11">every spec-decode configuration lands on the same C8 throughput</text>
+<text x="474" y="412" fill="#e8ecf1" font-size="12" text-anchor="middle">mean acceptance length (tokens per step) →</text>
+<text x="18" y="199" fill="#e8ecf1" font-size="12" text-anchor="middle" transform="rotate(-90 18 199)">engine steps per second →</text>
+<circle cx="104" cy="388" r="5" fill="#4c8dff"/>
+<text x="114" y="392" fill="#9aa4b2" font-size="10">MTP7</text>
+<circle cx="222" cy="388" r="5" fill="#4c8dff"/>
+<text x="232" y="392" fill="#9aa4b2" font-size="10">MTP7, breakable off</text>
+<circle cx="340" cy="388" r="5" fill="#4c8dff"/>
+<text x="350" y="392" fill="#9aa4b2" font-size="10">MTP7, cost x0.5</text>
+<circle cx="458" cy="388" r="5" fill="#4c8dff"/>
+<text x="468" y="392" fill="#9aa4b2" font-size="10">MTP3</text>
+<circle cx="576" cy="388" r="5" fill="#4c8dff"/>
+<text x="586" y="392" fill="#9aa4b2" font-size="10">MTP5</text>
+<circle cx="694" cy="388" r="5" fill="#4c8dff"/>
+<text x="704" y="392" fill="#9aa4b2" font-size="10">MTP3, breakable off</text>
+<circle cx="812" cy="388" r="5" fill="#4c8dff"/>
+<text x="822" y="392" fill="#9aa4b2" font-size="10">MTP3 + PR#810</text>
+</svg>
+<figcaption><b>Every configuration lies on the same iso-throughput curve.</b> Doubling tokens per
+step halves steps per second. The product is not a coincidence: the tensor-parallel
+AllReduce/AllGather payload scales with the tokens in the step, so the available bytes/second
+fixes tokens/second.</figcaption>
+</figure>
+<div class="tw"><table><thead><tr><th>configuration</th><th>acceptance (tok/step)</th><th>steps/s</th><th>tokens/s (= product)</th></tr></thead><tbody>
+<tr class="good"><td>MTP7</td><td>2.0</td><td>542.5</td><td>1,101</td></tr>
+<tr class="good"><td>MTP7, breakable off</td><td>3.9</td><td>541.9</td><td>2,135</td></tr>
+<tr class="good"><td>MTP7, cost x0.5</td><td>4.2</td><td>536.6</td><td>2,281</td></tr>
+<tr class="good"><td>MTP3</td><td>3.4</td><td>546.6</td><td>1,869</td></tr>
+<tr class="good"><td>MTP5</td><td>4.2</td><td>568.9</td><td>2,389</td></tr>
+<tr class="good"><td>MTP3, breakable off</td><td>3.1</td><td>564.0</td><td>1,748</td></tr>
+<tr class="good"><td>MTP3 + PR#810</td><td>3.4</td><td>579.6</td><td>1,971</td></tr>
+</tbody></table></div>
+<div class="note">
+<b>The law.</b> At a given concurrency, decode throughput is <em>collective-bandwidth-bound</em>:
+<pre><code>tokens/s  =  (bytes/s available to collectives) / (bytes per token)
+          =  tokens/step  &times;  steps/s       &larr; the product is invariant</code></pre>
+</div>
+<p>This reframes optimisation. <b>Speculative-decoding tuning cannot raise throughput on this
+box</b> &mdash; it only shifts the mix (latency tails, prefill/decode balance). Exactly three
+levers can move the ceiling:</p>
+<ol>
+  <li><b>Raise effective collective bandwidth.</b> What the fix did: 196&rarr;542&nbsp;tok/s, ~2.8&times;.
+  Candidates: transport and algorithm choice, channel counts, lower-precision allreduce, or a
+  parallel layout that ships fewer bytes.</li>
+  <li><b>Reduce bytes per token.</b> Anything that shrinks what each token must exchange.</li>
+  <li><b>Reduce fixed per-step overhead.</b> Why graphs matter so much here: eager mode is
+  ~8&nbsp;tok/s, roughly 30&times; worse than graph mode; capture size and graph coverage sit here.</li>
+</ol>
+<p class="small">Any future &ldquo;make it faster&rdquo; idea should be tested against those three.
+If it only changes tokens per step, expect the product to stay put.</p>
+
+<h2 id="repro">7. Reproducing this, and the rules that made it findable</h2>
+<div class="grid2">
+  <div>
+    <h3>Recipe: matched A/B</h3>
+    <ul>
+      <li>Fix model, GPUs, client, cells, capture size, depth, scheduler limits.</li>
+      <li>Change one variable; measure C1&times;3 and C8&times;3 (medians), plus C4/C16.</li>
+      <li>Record prefill ladders too &mdash; they exposed that half the &ldquo;deficit&rdquo; was the
+      same bug.</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Recipe: out-of-process kernel profile</h3>
+    <ul>
+      <li>Launch the engine <em>under</em> <code>nsys</code>, re-exec&rsquo;ing the image&rsquo;s own
+      entrypoint so configuration stays identical.</li>
+      <li>Run vLLM&rsquo;s profiler in <code>cuda</code> mode; capture with
+      <code>--capture-range=cudaProfilerApi</code> so only the benchmark window is recorded.</li>
+      <li>Normalise per wall-second; quote <em>per-call</em> times for collectives.</li>
+    </ul>
+  </div>
+</div>
+<h3>The rules</h3>
+<ol>
+  <li><b>Check that the launch is profile-resolved before believing any measurement.</b> A raw
+  launch can be ~2.8&times; slower for reasons no diff, commit message or config comparison will
+  show.</li>
+  <li><b>Never trust an A/B run under a dominant bottleneck.</b> Quantify the bottleneck first.</li>
+  <li><b>Profile before theorising.</b> The answer was obvious in one kernel table and invisible
+  in a day of code and config archaeology.</li>
+  <li><b>Prefer cheap discriminators.</b> &ldquo;Eager on both lanes&rdquo; cost one boot and
+  localised the deficit to the graph path immediately.</li>
+  <li><b>Read the vendor&rsquo;s own mechanics.</b> The failure mode and its remedy were both
+  written down in the runtime&rsquo;s README and profile files before we found them.</li>
+</ol>
+
+<h2 id="caveats">8. Caveats and corrections</h2>
+<ul>
+  <li><b>One node, one model.</b> All measurements are TP4 DeepSeek-V4.1-Flash on four
+  RTX PRO 6000 (SM120) over PCIe, single node. The <em>mechanism</em> (profile bypass &rarr;
+  transport mis-selection) is general; the specific numbers are not.</li>
+  <li><b>Single cells for C4/C16.</b> C1 and C8 are medians of three cells; C4 and C16 are single
+  30-second cells, so differences under ~5% there are not meaningful.</li>
+  <li><b>Instrumentation costs ~25%.</b> Configurations measured with <code>nsys</code> active
+  (e.g. the capture-64 row) are floors, not rates. They are labelled as such.</li>
+  <li><b>Attribution correction.</b> A <code>C1 255.82 / 32K prefill 15,586</code> figure from an
+  upstream PR was initially treated as a DS4.1 target. Its configuration string
+  (&ldquo;B12X-<b>KDA</b>&rdquo;) and the PR&rsquo;s six-model scope indicate it is very likely a
+  GLM result, not DS4.1. It has been removed as a target; there is no trustworthy external
+  DS4.1 C1 number we are aware of.</li>
+  <li><b>Unfiled defect.</b> The newest combination (current integration tip + newest library
+  master) deadlocks at startup on this topology, bisected to a specific library commit;
+  the immediately preceding commit boots fine. Documented, not reported.</li>
+</ul>
+
+<h2 id="data">9. Appendix: full data</h2>
+<p class="small">Every row below is a measured benchmark directory: aggregate decode tokens/second
+(C1 and C8: median of three 30-second cells; C4 and C16: single cells), and prefill tokens/second
+at three context lengths. Rows with no prefill entry were decode-only runs.</p>
+<div class="tw"><table><thead><tr><th>configuration</th><th>C1</th><th>C4</th><th>C8</th><th>C16</th><th>prefill 8k</th><th>prefill 32k</th><th>prefill 128k</th></tr></thead><tbody>
+<tr class="ref"><td>jovian line (reference)</td><td>157.3</td><td>376.3</td><td>524.4</td><td>809.4</td><td>10,904</td><td>10,430</td><td>9,405</td></tr>
+<tr class="bad"><td>karmic, raw launch</td><td>123.5</td><td>173.8</td><td>242.8</td><td>205.1</td><td>7,552</td><td>7,505</td><td>7,240</td></tr>
+<tr class="bad"><td>karmic, raw + NCCL_NET_PLUGIN=none only</td><td>116.8</td><td>144.9</td><td>137.3</td><td>256.5</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="bad"><td>karmic, raw + NCCL_IB_DISABLE=1 only</td><td>120.2</td><td>152.6</td><td>132.2</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="bad"><td>karmic, raw + b12x PCIe all-reduce only</td><td>127.9</td><td>206.6</td><td>213.6</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="good"><td>karmic, raw + NCCL_P2P_LEVEL=SYS only</td><td>139.8</td><td>405.2</td><td>511.8</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="good"><td>karmic, intended hardware profile</td><td>139.0</td><td>409.0</td><td>550.1</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td></tr>
+<tr class="good"><td>karmic, fixed base + capture 128</td><td>124.1</td><td>406.4</td><td>542.5</td><td>848.8</td><td>11,195</td><td>10,787</td><td>9,750</td></tr>
+<tr class="good"><td>karmic, + MTP3</td><td>158.6</td><td>378.9</td><td>546.6</td><td>818.6</td><td>11,263</td><td>10,815</td><td>9,763</td></tr>
+<tr class="good"><td>karmic, + PR #810 (one line)</td><td>144.8</td><td>400.0</td><td>549.9</td><td>832.2</td><td>11,198</td><td>10,792</td><td>9,725</td></tr>
+<tr class="good"><td>karmic, MTP3 + PR #810</td><td>151.5</td><td>377.8</td><td>579.6</td><td>805.4</td><td>11,202</td><td>10,801</td><td>9,762</td></tr>
+</tbody></table></div>
+
+<footer>
+  <p><b>On the numbers.</b> Everything in this report is a measurement from the raw benchmark
+  artefacts, reproduced from disk rather than recalled. Where a measurement is a single cell, or
+  was taken under instrumentation, it says so.</p>
+  <p class="small">Report generated from benchmark JSON &middot; charts are inline SVG, no external
+  scripts or fonts &middot; September 2026.</p>
+</footer>
+
+</div>
+</body>
+</html>
