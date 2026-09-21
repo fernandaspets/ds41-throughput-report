@@ -48,22 +48,27 @@ NSYS = [
 # Eager vs CUDA graphs (C1 tok/s).
 EAGER = [("karmic", 7.7, 125.0), ("jovian line", 7.4, 156.0)]
 
-# Spec-decode depth surface: drafts, acceptance, C1, C4, C8, C16
+# Spec-decode depth surface. Acceptance is the engine-reported metric, logged per lane;
+# it is only paired with cells from the SAME lane. MTP7's acceptance was not captured
+# for the plain capture-128 configuration that produced its cell values -> None.
 DEPTH = [
     (3, 3.42, 158.6, 378.9, 546.6, 818.6),
     (5, 4.20, 148.2, 393.6, 568.9, 788.9),
-    (7, 2.03, 124.1, 406.4, 542.5, 848.8),
+    (7, None, 124.1, 406.4, 542.5, 848.8),
 ]
 
-# The conservation law: acceptance vs steps/s at C8 (steps/s = C8 / acceptance)
+# The invariant, measured: every row is a lane whose C8 AND acceptance were both logged,
+# so steps/s is derived from that lane's own numbers.
 LAW = [
-    ("MTP7", 2.03, 542.5),
+    ("MTP3", 3.42, 546.6),
+    ("MTP3, breakable on", 3.61, 553.7),
+    ("MTP3, breakable off", 3.10, 564.0),
+    ("MTP5", 4.20, 568.9),
     ("MTP7, breakable off", 3.94, 541.9),
     ("MTP7, cost x0.5", 4.25, 536.6),
-    ("MTP3", 3.42, 546.6),
-    ("MTP5", 4.20, 568.9),
-    ("MTP3, breakable off", 3.10, 564.0),
-    ("MTP3 + PR#810", 3.40, 579.6),
+    ("MTP7, PCIe off", 3.82, 549.3),
+    ("PR #810", 3.40, 549.9),
+    ("MTP3 + PR #810", 2.71, 579.6),
 ]
 
 C = dict(bg="#0f1115", panel="#171a21", ink="#e8ecf1", dim="#9aa4b2", line="#2a2f3a",
@@ -221,13 +226,14 @@ def chart_prefill():
 
 # ------------------------------------------------------------------ chart: law
 def chart_law():
-    w, h = 900, 430
-    L, R, T, B = 74, 26, 30, 62
-    x0, x1 = 1.8, 4.5      # acceptance
-    y0, y1 = 100.0, 300.0  # steps/s
+    w, h = 900, 470
+    L, R, T, B = 74, 26, 30, 96
+    x0, x1 = 2.6, 4.4      # acceptance
+    y0, y1 = 110.0, 230.0  # steps/s
+    iso = sum(s for _, a, s in LAW) / len(LAW)   # mean measured tokens/s
     def px(a): return L + (w - L - R) * (a - x0) / (x1 - x0)
     def py(s): return h - B - (h - T - B) * (s - y0) / (y1 - y0)
-    out = [svg_open(w, h, "The conservation law: tokens per step versus steps per second")]
+    out = [svg_open(w, h, "The invariant: tokens per step versus steps per second")]
     for i in range(0, 5):
         s = y0 + (y1 - y0) * i / 4
         out.append(f'<line x1="{L}" y1="{py(s):.1f}" x2="{w-R}" y2="{py(s):.1f}" stroke="{C["line"]}"/>')
@@ -235,28 +241,30 @@ def chart_law():
     for i in range(0, 7):
         a = x0 + (x1 - x0) * i / 6
         out.append(f'<line x1="{px(a):.1f}" y1="{T}" x2="{px(a):.1f}" y2="{h-B}" stroke="{C["line"]}" stroke-dasharray="2,4"/>')
-        out.append(f'<text x="{px(a):.1f}" y="{h-B+20}" fill="{C["dim"]}" font-size="11" text-anchor="middle">{a:.1f}</text>')
-    # iso-throughput curve for 550 tok/s
+        out.append(f'<text x="{px(a):.1f}" y="{h-B+20}" fill="{C["dim"]}" font-size="11" text-anchor="middle">{a:.2f}</text>')
     pts = []
     a = x0
     while a <= x1:
-        s = 550.0 / a
+        s = iso / a
         if y0 <= s <= y1:
             pts.append(f"{px(a):.1f},{py(s):.1f}")
         a += 0.02
     out.append(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{C["acc"]}" stroke-width="2" stroke-dasharray="6,4"/>')
     for label, a, s in LAW:
-        col = C["good"] if s > 555 else C["ref"]
-        out.append(f'<circle cx="{px(a):.1f}" cy="{py(s):.1f}" r="6" fill="{col}" stroke="{C["bg"]}" stroke-width="2"/>')
-    out.append(f'<text x="{w-R-6}" y="{T+16}" fill="{C["acc"]}" font-size="12" text-anchor="end">dashed = constant 550 tok/s (tokens/step \u00d7 steps/s)</text>')
-    out.append(f'<text x="{L}" y="{T-10}" fill="{C["dim"]}" font-size="11">every spec-decode configuration lands on the same C8 throughput</text>')
-    out.append(f'<text x="{(L+w-R)/2:.0f}" y="{h-18}" fill="{C["ink"]}" font-size="12" text-anchor="middle">mean acceptance length (tokens per step) \u2192</text>')
-    out.append(f'<text x="18" y="{(T+h-B)/2:.0f}" fill="{C["ink"]}" font-size="12" text-anchor="middle" transform="rotate(-90 18 {(T+h-B)/2:.0f})">engine steps per second \u2192</text>')
-    lx = L + 30
-    for label, a, s in LAW:
-        out.append(f'<circle cx="{lx}" cy="{h-42}" r="5" fill="{C["ref"]}"/>')
-        out.append(f'<text x="{lx+10}" y="{h-38}" fill="{C["dim"]}" font-size="10">{esc(label)}</text>')
-        lx += 118
+        steps = s / a
+        col = C["good"] if s >= iso else C["ref"]
+        out.append(f'<circle cx="{px(a):.1f}" cy="{py(steps):.1f}" r="6" fill="{col}" stroke="{C["bg"]}" stroke-width="2"><title>{esc(label)}: {a:.2f} tok/step, {steps:.1f} steps/s, {s:,.1f} tok/s</title></circle>')
+    out.append(f'<text x="{w-R-6}" y="{T+16}" fill="{C["acc"]}" font-size="12" text-anchor="end">dashed = constant {iso:,.0f} tok/s</text>')
+    out.append(f'<text x="{L}" y="{T-10}" fill="{C["dim"]}" font-size="11">each point is one measured configuration (C8)</text>')
+    out.append(f'<text x="{(L+w-R)/2:.0f}" y="{h-70}" fill="{C["ink"]}" font-size="12" text-anchor="middle">mean acceptance length (tokens per step) \u2192</text>')
+    yc = (T + h - B) / 2
+    out.append(f'<text x="18" y="{yc:.0f}" fill="{C["ink"]}" font-size="12" text-anchor="middle" transform="rotate(-90 18 {yc:.0f})">engine steps per second \u2192</text>')
+    for i, (label, a, s) in enumerate(LAW):
+        col = C["good"] if s >= iso else C["ref"]
+        cx = L + (i % 5) * 150
+        cy = h - 46 + (i // 5) * 17
+        out.append(f'<circle cx="{cx}" cy="{cy}" r="5" fill="{col}"/>')
+        out.append(f'<text x="{cx+10}" y="{cy+4}" fill="{C["dim"]}" font-size="10">{esc(label)}</text>')
     out.append("</svg>")
     return "\n".join(out)
 
@@ -284,15 +292,20 @@ grid_tbl = table(CONFIG_ROWS,
                  [0, 1, 2, 3, 4, 5, 6, 7],
                  ["configuration", "C1", "C4", "C8", "C16", "prefill 8k", "prefill 32k", "prefill 128k"])
 
-depth_tbl = table([(f"MTP{d}", acc, c1, c4, c8, c16, "good" if d == 3 else ("ref" if d == 5 else ""))
+depth_tbl = table([(f"MTP{d}", (f"{acc:.2f}" if acc is not None else "not captured"), c1, c4, c8, c16,
+                    "good" if d == 3 else ("ref" if d == 5 else ""))
                    for d, acc, c1, c4, c8, c16 in DEPTH],
                   [0, 1, 2, 3, 4, 5],
                   ["speculative depth", "acceptance (tok/step)", "C1", "C4", "C8", "C16"])
 
-law_tbl = table([(label, acc, f"{s:,.1f}", f"{s*acc:,.0f}", "good" if s * acc > 570 else "ref")
+law_min = min(s for _, _, s in LAW)
+law_max = max(s for _, _, s in LAW)
+law_acc_min = min(a for _, a, _ in LAW)
+law_acc_max = max(a for _, a, _ in LAW)
+law_tbl = table([(label, f"{acc:.2f}", f"{s/acc:,.1f}", f"{s:,.0f}", "good" if s > 555 else "ref")
                  for label, acc, s in LAW],
                 [0, 1, 2, 3],
-                ["configuration", "acceptance (tok/step)", "steps/s", "tokens/s (= product)"])
+                ["configuration", "acceptance (tok/step)", "steps/s (derived)", "measured tokens/s"])
 
 HTML = f"""<!doctype html>
 <html lang="en">
@@ -401,7 +414,7 @@ HTML = f"""<!doctype html>
 <p>Two build lines of the same serving stack &mdash; same model, same four GPUs, same launch
 knobs, same benchmark client &mdash; differed by up to <b>2.8&times;</b> in decode throughput:
 the &ldquo;karmic&rdquo; line managed <b>196&nbsp;tok/s</b> at C8 where the &ldquo;jovian&rdquo; line
-did <b>541&nbsp;tok/s</b>. Prefill was only ~28% down, and the deficit grew monotonically with
+did <b>541&nbsp;tok/s</b>. Prefill was only ~31% down, and the deficit grew monotonically with
 concurrency, which ruled out a fixed overhead or a broken kernel.</p>
 <p>The cause was not in either codebase. It was in <em>how the karmic lane was launched</em>.
 That image ships a layered configuration system (platform foundation &rarr; model profile &rarr;
@@ -425,7 +438,7 @@ only three levers can.</p>
 <figure>
 {chart_gap()}
 <figcaption><b>Decode throughput, before and after.</b> The raw karmic launch loses ground
-sharply as concurrency rises &mdash; 1.3&times; at C1, 2.2&times; at C4, 2.2&times; at C8, and 4.1&times; at C16
+sharply as concurrency rises &mdash; 1.3&times; at C1, 2.2&times; at C4, 2.2&times; at C8, and 3.9&times; at C16
 &mdash; while the fixed configuration matches or beats the reference everywhere except C1.</figcaption>
 </figure>
 {grid_tbl}
@@ -437,7 +450,7 @@ configurations, the last five are recovered ones. Full provenance in the
 <h3>The shape of the gap is the first clue</h3>
 <ul>
   <li><b>Decode-only.</b> Prefill was 7,552&nbsp;tok/s on the slow lane versus 10,904 on the
-  reference &mdash; a 28% deficit, not 2.8&times;. Whatever it was, it punished the decode step
+  reference &mdash; a 31% deficit, not 2.8&times;. Whatever it was, it punished the decode step
   disproportionately.</li>
   <li><b>Growing with concurrency.</b> C1 was nearly at parity; the penalty scaled with the
   number of rows per step. That is the signature of something that scales with the <em>batch
@@ -459,15 +472,16 @@ overriding.</p>
 <h3>3.2 Elimination by measurement, not by argument</h3>
 <p>Each hypothesis was killed with numbers rather than reasoning:</p>
 <ul>
-  <li><b>Stale commits</b> &mdash; a 54-commit-stale snapshot measured identical.</li>
-  <li><b>Library versions</b> &mdash; both lines shipped the same package version; a kernel-level
-  diff harness showed the reference and our kernels agreeing bit-exactly on quantisation, GEMM
-  and the scheduler-side math (MXFP8 quantisation and FP8 GEMM were <em>exactly</em> equal).</li>
-  <li><b>The autotuner</b> &mdash; selection caches differed for 296 of 1122 shared workloads, and
-  reverting the suspected timing change moved nothing (189 vs 174 at C4).</li>
-  <li><b>Speculative decoding</b> &mdash; acceptance differed by only 12%, against a 175% gap.</li>
-  <li><b>Our own patches, the model entrypoint, plan caches, breakable graphs, the PCIe flag</b>
-  &mdash; each measured, none responsible.</li>
+  <li><b>Library versions and numerics</b> &mdash; both lines shipped the same package version,
+  and a kernel-level diff harness showed them agreeing bit-exactly on the scheduler-side math:
+  MXFP8 quantisation, FP8 GEMM and the fused combine all came out at
+  <em>max-abs-diff 0.0</em> (or bf16-bit-exact).</li>
+  <li><b>The autotuner</b> &mdash; reverting the suspected autotuning-timing change moved
+  nothing: C4 188.5 against the baseline&rsquo;s 173.8, C8 237.9 against 242.8.</li>
+  <li><b>Speculative decoding</b> &mdash; see section&nbsp;6: across configurations the acceptance
+  varies by 1.6&times; while throughput does not move at all. It cannot be the cause of a 2.2&times; gap.</li>
+  <li><b>Our own patches, the model entrypoint, plan caches, breakable graphs and the PCIe
+  all-reduce flag</b> &mdash; each measured individually; none responsible (section&nbsp;5).</li>
 </ul>
 
 <h3>3.3 The trap that cost half a day: tests under a dominant bottleneck are void</h3>
@@ -493,9 +507,9 @@ and the capture is triggered through the CUDA profiler API by running vLLM&rsquo
 <figure>
 {chart_eager()}
 <figcaption><b>Eager vs graphs.</b> With CUDA graphs off, the two lines are indistinguishable
-(7.7 vs 7.4&nbsp;tok/s at C1) and both are ~16&times; slower than the reference in graph mode.
-This one boot proved the deficit lived inside the captured-graph path and scaled with batch
-rows &mdash; not in the Python model loop.</figcaption>
+(7.7 vs 7.4&nbsp;tok/s at C1) &mdash; and each is 16&times; and 21&times; below its own graph-mode
+throughput. This one boot proved the deficit lived inside the captured-graph path and scaled
+with batch rows, not in the Python model loop.</figcaption>
 </figure>
 
 <h3>3.6 Bisect to a single variable</h3>
@@ -570,20 +584,29 @@ request cannot amortise the extra verification work. C8 peaks at depth 5, C16 at
 <h2 id="law">6. The governing law</h2>
 <p>The most useful result is not the fix, it is what the fix exposed. Across <em>every</em>
 spec-decode, cost-scale, breakable-graph and tuning configuration we measured, C8 throughput
-landed between <b>537 and 580&nbsp;tok/s</b> &mdash; while acceptance ranged from 2.03 to 4.25 tokens
-per step.</p>
+landed between <b>{law_min:,.0f} and {law_max:,.0f}&nbsp;tok/s</b> &mdash; while acceptance ranged
+from <b>{law_acc_min:.2f} to {law_acc_max:.2f} tokens per step</b>.</p>
 <figure>
 {chart_law()}
-<figcaption><b>Every configuration lies on the same iso-throughput curve.</b> Doubling tokens per
-step halves steps per second. The product is not a coincidence: the tensor-parallel
-AllReduce/AllGather payload scales with the tokens in the step, so the available bytes/second
-fixes tokens/second.</figcaption>
+<figcaption><b>Tokens per step and steps per second trade off exactly.</b> Across nine
+configurations, acceptance spans {law_acc_min:.2f}&ndash;{law_acc_max:.2f} tokens per step while
+measured throughput stays inside {law_min:,.0f}&ndash;{law_max:,.0f}&nbsp;tok/s. Since steps/s is
+throughput divided by acceptance, the two axes are locked to one another &mdash; the finding is
+that <em>throughput itself does not move</em>.</figcaption>
 </figure>
 {law_tbl}
 <div class="note">
-<b>The law.</b> At a given concurrency, decode throughput is <em>collective-bandwidth-bound</em>:
-<pre><code>tokens/s  =  (bytes/s available to collectives) / (bytes per token)
-          =  tokens/step  &times;  steps/s       &larr; the product is invariant</code></pre>
+<b>The invariant (measured).</b> Nine configurations, acceptance from {law_acc_min:.2f} to
+{law_acc_max:.2f} tokens per step, and throughput stays within
+{law_min:,.0f}&ndash;{law_max:,.0f}&nbsp;tok/s at C8. Tokens per step and steps per second simply
+trade off &mdash; by definition, since steps/s = throughput &divide; tokens/step.
+<br><br>
+<b>The explanation (hypothesis, supported by the fix).</b> The tensor-parallel
+AllReduce/AllGather payload scales with the tokens in a step, so the bytes/second the
+collectives can move fixes tokens/second:
+<pre><code>tokens/s  &asymp;  (bytes/s available to collectives) / (bytes exchanged per token)</code></pre>
+The independent evidence is the fix itself: correcting the transport raised per-collective
+efficiency and moved throughput 2.2&times; <em>without touching speculative decoding at all</em>.
 </div>
 <p>This reframes optimisation. <b>Speculative-decoding tuning cannot raise throughput on this
 box</b> &mdash; it only shifts the mix (latency tails, prefill/decode balance). Exactly three
@@ -594,7 +617,7 @@ levers can move the ceiling:</p>
   parallel layout that ships fewer bytes.</li>
   <li><b>Reduce bytes per token.</b> Anything that shrinks what each token must exchange.</li>
   <li><b>Reduce fixed per-step overhead.</b> Why graphs matter so much here: eager mode is
-  ~8&nbsp;tok/s, roughly 30&times; worse than graph mode; capture size and graph coverage sit here.</li>
+  ~8&nbsp;tok/s, 16&ndash;21&times; below graph mode; capture size and graph coverage sit here.</li>
 </ol>
 <p class="small">Any future &ldquo;make it faster&rdquo; idea should be tested against those three.
 If it only changes tokens per step, expect the product to stay put.</p>
@@ -642,6 +665,13 @@ If it only changes tokens per step, expect the product to stay put.</p>
   transport mis-selection) is general; the specific numbers are not.</li>
   <li><b>Single cells for C4/C16.</b> C1 and C8 are medians of three cells; C4 and C16 are single
   30-second cells, so differences under ~5% there are not meaningful.</li>
+  <li><b>Run-to-run variance on identical configurations.</b> The same nominal MTP3 / capture-128
+  configuration was measured twice on separate boots: C8 546.6 and 553.7&nbsp;tok/s, with acceptance
+  3.42 and 3.61. Treat sub-5% differences, and acceptance differences of a few percent, as noise.</li>
+  <li><b>One claim removed for want of evidence.</b> An early note that speculative acceptance
+differed by only ~12% between the two lines rested on a metric captured from a live container
+whose logs were not retained. It cannot be re-derived from the surviving artefacts, so it is not
+asserted here &mdash; the verifiable version is the invariant in section&nbsp;6.</li>
   <li><b>Instrumentation costs ~25%.</b> Configurations measured with <code>nsys</code> active
   (e.g. the capture-64 row) are floors, not rates. They are labelled as such.</li>
   <li><b>Attribution correction.</b> A <code>C1 255.82 / 32K prefill 15,586</code> figure from an
@@ -664,6 +694,14 @@ at three context lengths. Rows with no prefill entry were decode-only runs.</p>
   <p><b>On the numbers.</b> Everything in this report is a measurement from the raw benchmark
   artefacts, reproduced from disk rather than recalled. Where a measurement is a single cell, or
   was taken under instrumentation, it says so.</p>
+  <p class="small"><b>Verification.</b> Every table row in this report was recomputed from the raw
+  benchmark JSON, the <code>nsys</code> CSV exports and the engine-reported metrics, by
+  <code>verify_report.py</code> (in this repository), which prints the recomputed value beside the
+  reported one and fails loudly on any mismatch. Final run: <b>0 mismatches</b> across all grid
+  rows, the kernel-time numbers and the acceptance metrics. Three arithmetic statements in an
+  earlier draft were corrected by that check (a 4.1&times; figure that is 3.9&times;, a 28% prefill
+  deficit that is 31%, and an &ldquo;~30&times;&rdquo; eager penalty that is 16&ndash;21&times;), as
+  were three claims that could not be re-derived from source.</p>
   <p class="small">Report generated from benchmark JSON &middot; charts are inline SVG, no external
   scripts or fonts &middot; September 2026.</p>
 </footer>

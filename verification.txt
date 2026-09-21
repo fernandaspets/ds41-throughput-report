@@ -1,0 +1,68 @@
+====================================================================================
+A. GRID TABLE ROWS — recomputed from bench JSON (report values in the generator)
+====================================================================================
+  ok   jovian reference       C1   157.3 C4   376.3 C8   524.4 C16   809.4  pf 10904/10430/9405
+  ok   karmic raw             C1   123.5 C4   173.8 C8   242.8 C16   205.1  pf 7552/7505/7240
+  ok   NET_PLUGIN=none only   C1   116.8 C4   144.9 C8   137.3 C16   256.5  pf None/None/None
+  ok   IB_DISABLE only        C1   120.2 C4   152.6 C8   132.2 C16    None  pf None/None/None
+  ok   PCIe allreduce only    C1   127.9 C4   206.6 C8   213.6 C16    None  pf None/None/None
+  ok   P2P_LEVEL only         C1   139.8 C4   405.2 C8   511.8 C16    None  pf None/None/None
+  ok   intended profile       C1   139.0 C4   409.0 C8   550.1 C16    None  pf None/None/None
+  ok   fixed capture128       C1   124.1 C4   406.4 C8   542.5 C16   848.8  pf 11195/10787/9750
+  ok   MTP3                   C1   158.6 C4   378.9 C8   546.6 C16   818.6  pf 11263/10815/9763
+  ok   PR810                  C1   144.8 C4   400.0 C8   549.9 C16   832.2  pf 11198/10792/9725
+  ok   MTP3+PR810             C1   151.5 C4   377.8 C8   579.6 C16   805.4  pf 11202/10801/9762
+
+====================================================================================
+B. DEPTH / LAW TABLE ROWS
+====================================================================================
+  MTP5                   C1   148.2 C4   393.6 C8   568.9 C16   788.9  pf 11136/10805/9729
+  MTP7 breakable off     C1   122.0 C4   399.6 C8   541.9 C16   834.1  pf 9999/10272/9513
+  MTP7 cost05            C1   121.3 C4   355.3 C8   536.6 C16   834.0  pf 11192/10836/9710
+  MTP7 pcieoff           C1   138.4 C4   403.3 C8   549.3 C16   838.5  pf 10992/10586/9509
+  MTP3 breakable on      C1   156.1 C4   382.9 C8   553.7 C16   815.1  pf 11173/10848/9772
+  MTP3 breakable off     C1   156.3 C4   401.4 C8   564.0 C16   830.0  pf 10224/10368/9530
+  qualified defaults     C1   154.1 C4   306.6 C8    None C16    None  pf None/None/None
+  b12x contract6         C1   125.7 C4   411.6 C8   548.8 C16   815.3  pf 11073/10764/9722
+
+====================================================================================
+C. ACCEPTANCE / DEPTH — from engine-reported lines in the runner logs
+====================================================================================
+  Q1                     acceptance 2.38   depth 3.00/3
+  Q2                     acceptance 2.71   depth 2.62/3
+  anon_3.10              acceptance 3.10   depth 2.86/3
+  anon_3.40              acceptance 3.40   depth 4.55/7
+  anon_3.42              acceptance 3.42   depth 2.89/3
+  anon_3.61              acceptance 3.61   depth 2.94/3
+  anon_3.94              acceptance 3.94   depth 7.00/7
+  brk0                   acceptance 3.94   depth 7.00/7
+  brk0mtp3               acceptance 3.10   depth 2.86/3
+  brk1mtp3               acceptance 3.61   depth 2.94/3
+  cost05                 acceptance 4.25   depth 7.00/7
+  mtp5                   acceptance 4.20   depth 4.07/5
+  pcieoff                acceptance 3.82   depth 7.00/7
+
+====================================================================================
+D. nsys NUMBERS — recomputed from the CSV summaries
+====================================================================================
+  nsys-kk-kernels.csv    NCCL share  92.7%   AllReduce   4011 us/call (n=1724)   AllGather   4453 us/call (n=1068)
+  nsys-r39-kernels.csv   NCCL share  76.4%   AllReduce    860 us/call (n=3176)   AllGather   1300 us/call (n=2192)
+  nsys-base-kernels.csv  NCCL share  69.1%   AllReduce   1003 us/call (n=3600)   AllGather    702 us/call (n=2680)
+
+====================================================================================
+E. PROSE RATIOS — recomputed so every claim in the text can be checked
+====================================================================================
+  gap C1   ref/raw = 1.27x   (ref 157.3 / raw 123.5)
+  gap C4   ref/raw = 2.17x   (ref 376.3 / raw 173.8)
+  gap C8   ref/raw = 2.16x   (ref 524.4 / raw 242.8)
+  gap C16  ref/raw = 3.95x   (ref 809.4 / raw 205.1)
+  prefill 8k: raw is 30.7% below ref (7552 vs 10904)
+  matched profile C8: karmic 196.5 vs r39 540.9 -> 2.75x
+  MTP3 vs MTP7 C1: 158.6 vs 124.1 -> +27.8%
+  PR810 vs base C1: 144.8 vs 124.1 -> +16.7%
+  PCIe off vs on C1: 138.4 vs 124.1 -> +11.5%
+  eager collapse: karmic 7.7 vs graphs 124.1 = 16.1x ; r39 7.4 vs graphs 157.3 = 21.3x
+  capture 64->128: C8 496.1 -> 542.5 (+9.4%), C16 810.9 -> 848.8 (+4.7%)
+  revert318: C4 188.5 (raw 173.8), C8 237.9 (raw 242.8)
+
+FAILURES: 0

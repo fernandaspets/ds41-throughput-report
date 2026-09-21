@@ -52,3 +52,16 @@ above the reference.
 ```bash
 python3 gen_report.py   # writes index.html
 ```
+
+## Verification
+
+`verify_report.py` recomputes every table row from the raw benchmark artefacts (benchmark JSON,
+`nsys` CSV exports, and engine-reported metrics), prints the recomputed value beside the reported
+one, and counts mismatches. `verification.txt` is the output of the final run: **0 mismatches**
+across all grid rows, the kernel-time numbers and the acceptance metrics.
+
+That check corrected three arithmetic statements in an earlier draft (a 4.1x figure that is 3.9x,
+a 28% prefill deficit that is 31%, and an "~30x" eager penalty that is 16-21x) and removed three
+claims that could not be re-derived from source — including an acceptance comparison whose metric
+had only ever been captured from a live container whose logs were not retained. Claims in this
+report are restricted to what the preserved artefacts support.
