@@ -100,6 +100,14 @@ USED = {
     "PR810":                ("bench-hunt2-p810", (144.8, 400.0, 549.9, 832.2, 11198, 10792, 9725)),
     "MTP3+PR810":           ("bench-hunt3-mtp3p810", (151.5, 377.8, 579.6, 805.4, 11202, 10801, 9762)),
 }
+
+# --- 2026-09-24: newest LIL layer (hunt6) ---
+USED.update({
+    "integration tip 0924": ("bench-hunt6-int0924",   (168.0, 413.8, 598.6, 825.8, 11260, 10829, 9797)),
+    "dev tip 0924":         ("bench-hunt6-dev0924",   (165.5, 429.8, 598.2, 843.0, 11339, 10864, 9825)),
+    "dev tip + L2 prefetch":("bench-hunt6-dev0924pf", (162.0, 417.2, 585.3, 838.0, 11219, 10838, 9801)),
+})
+
 fails = 0
 for label, (bd, used) in USED.items():
     c = cells(bd)

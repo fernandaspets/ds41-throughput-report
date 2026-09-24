@@ -24,6 +24,9 @@ CONFIG_ROWS = [
     ("karmic, + MTP3", 158.6, 378.9, 546.6, 818.6, 11263, 10815, 9763, "good"),
     ("karmic, + PR #810 (one line)", 144.8, 400.0, 549.9, 832.2, 11198, 10792, 9725, "good"),
     ("karmic, MTP3 + PR #810", 151.5, 377.8, 579.6, 805.4, 11202, 10801, 9762, "good"),
+    ("karmic, integration tip 2026-09-24", 168.0, 413.8, 598.6, 825.8, 11260, 10829, 9797, "good"),
+    ("karmic, dev tip 2026-09-24 (DS4.1 squeeze)", 165.5, 429.8, 598.2, 843.0, 11339, 10864, 9825, "good"),
+    ("karmic, dev tip + L2 prefetch forced", 162.0, 417.2, 585.3, 838.0, 11219, 10838, 9801, "good"),
 ]
 
 # The variable ladder at C8: everything added on top of the raw launch.
@@ -307,6 +310,16 @@ law_tbl = table([(label, f"{acc:.2f}", f"{s/acc:,.1f}", f"{s:,.0f}", "good" if s
                 [0, 1, 2, 3],
                 ["configuration", "acceptance (tok/step)", "steps/s (derived)", "measured tokens/s"])
 
+FOLLOWUP = [
+    ("integration tip 2026-09-24", 168.0, 413.8, 598.6, 825.8, 11260, 10829, 9797, "good"),
+    ("dev tip 2026-09-24 (DS4.1 squeeze)", 165.5, 429.8, 598.2, 843.0, 11339, 10864, 9825, "good"),
+    ("dev tip + L2 prefetch forced", 162.0, 417.2, 585.3, 838.0, 11219, 10838, 9801, "bad"),
+    ("previous best (old layer)", 158.6, 413.1, 579.6, 848.8, 11263, 10815, 9763, "ref"),
+    ("jovian reference", 157.3, 376.3, 524.4, 809.4, 10904, 10430, 9405, ""),
+]
+followup_tbl = table(FOLLOWUP, [0,1,2,3,4,5,6,7],
+                     ["configuration", "C1", "C4", "C8", "C16", "prefill 8k", "prefill 32k", "prefill 128k"])
+
 HTML = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -404,6 +417,7 @@ HTML = f"""<!doctype html>
     <li><a href="#solution">The solution</a></li>
     <li><a href="#extra">Secondary findings (free speed)</a></li>
     <li><a href="#law">The governing law</a></li>
+    <li><a href="#followup">Follow-up: the newest upstream layer</a></li>
     <li><a href="#repro">Reproducing this, and the rules that made it findable</a></li>
     <li><a href="#caveats">Caveats and corrections</a></li>
     <li><a href="#data">Appendix: full data</a></li>
@@ -622,7 +636,42 @@ levers can move the ceiling:</p>
 <p class="small">Any future &ldquo;make it faster&rdquo; idea should be tested against those three.
 If it only changes tokens per step, expect the product to stay put.</p>
 
-<h2 id="repro">7. Reproducing this, and the rules that made it findable</h2>
+<h2 id="followup">7. Follow-up (2026-09-24): the newest upstream layer</h2>
+<p>The lanes were later rebuilt from the maintainers&rsquo; <b>newest published wheels</b> &mdash;
+vLLM <code>9e5c2f39c6</code> (integration) and <code>b99d0d4304</code> (dev, which carries a
+DS4.1 decode commit), with b12x <code>555aaa83</code> &mdash; on the same pinned base and with the
+same fixed configuration (NCCL policy, capture 128, MTP3).</p>
+{followup_tbl}
+<p><b>Four things came out of it.</b></p>
+<ol>
+  <li><b>The startup deadlock is fixed.</b> The old layer hung at `b12x waiting for ranks:
+  0/38271`. That was a tuning-protocol mismatch: b12x now supplies the rejection count the Karmic
+  vLLM expects, the coordinator <em>errors explicitly instead of waiting indefinitely</em>, and the
+  runtime rejects incompatible vLLM/b12x pairs before publishing an image. The newest layer boots
+  clean.</li>
+  <li><b>New bests on every decode cell</b> &mdash; and every new configuration beats the
+  reference on every cell.</li>
+  <li><b>Model load fell from ~600&nbsp;s to 44&ndash;56&nbsp;s</b> (~11&ndash;13&times;, ~5&nbsp;GB/s)
+  with <code>INSTANTTENSOR_BACKEND=URING,AIO</code>. Load is no longer the dominant startup cost;
+  tuning is.</li>
+  <li><b>L2 weight prefetch is correctly gated to SM121.</b> Forced on our SM120 it activates but
+  <em>loses</em> 2&ndash;3%: the design targets GB10&rsquo;s slower LPDDR5X memory, and on GDDR7 the
+  fill is pure overhead. Leave it off here.</li>
+</ol>
+<div class="note warn">
+<b>Architectural caveat &mdash; GB10 is not this machine.</b> GB10/SM121 are DGX&nbsp;Spark-class
+mini-computers: a &ldquo;TP4&rdquo; there means <b>four separate nodes linked by NVIDIA fabric
+(RoCE/ConnectX)</b>, each with LPDDR5X and a small (~24&nbsp;MB) L2. Our box is <b>four GPUs in one
+chassis over PCIe with GDDR7</b>. So the maintainers&rsquo; DS4.1 decode work &mdash; L2 weight prefetch
+overlapped with the all-reduces, Engram reads overlapped with the target graph &mdash; targets
+<em>inter-node fabric latency and slow memory</em>, and is <b>not expected to transfer</b> here
+(measured: prefetch loses). Their collective numbers are likewise fabric measurements, not
+intra-node PCIe. It also explains the environment&rsquo;s shape (`spcx`/Spectrum-X, RoCE, &ldquo;switched
+Spark fabrics&rdquo;) &mdash; and why <em>our</em> fix was an intra-node PCIe transport knob (`NCCL_P2P_LEVEL`)
+that a fabric-oriented config never surfaces.
+</div>
+
+<h2 id="repro">8. Reproducing this, and the rules that made it findable</h2>
 <div class="grid2">
   <div>
     <h3>Recipe: matched A/B</h3>
@@ -658,7 +707,7 @@ If it only changes tokens per step, expect the product to stay put.</p>
   written down in the runtime&rsquo;s README and profile files before we found them.</li>
 </ol>
 
-<h2 id="caveats">8. Caveats and corrections</h2>
+<h2 id="caveats">9. Caveats and corrections</h2>
 <ul>
   <li><b>One node, one model.</b> All measurements are TP4 DeepSeek-V4.1-Flash on four
   RTX PRO 6000 (SM120) over PCIe, single node. The <em>mechanism</em> (profile bypass &rarr;
@@ -668,6 +717,10 @@ If it only changes tokens per step, expect the product to stay put.</p>
   <li><b>Run-to-run variance on identical configurations.</b> The same nominal MTP3 / capture-128
   configuration was measured twice on separate boots: C8 546.6 and 553.7&nbsp;tok/s, with acceptance
   3.42 and 3.61. Treat sub-5% differences, and acceptance differences of a few percent, as noise.</li>
+  <li><b>Different silicon, different physics.</b> The upstream DS4.1 optimizations in section&nbsp;7
+  were developed and measured on GB10 class hardware &mdash; four fabric-linked nodes (RoCE) with
+  LPDDR5X. This report&rsquo;s numbers are four GPUs in one chassis over PCIe with GDDR7. Gains are
+  not portable between those two architectures; our own L2-prefetch measurement is a direct example.</li>
   <li><b>One claim removed for want of evidence.</b> An early note that speculative acceptance
 differed by only ~12% between the two lines rested on a metric captured from a live container
 whose logs were not retained. It cannot be re-derived from the surviving artefacts, so it is not
@@ -684,7 +737,7 @@ asserted here &mdash; the verifiable version is the invariant in section&nbsp;6.
   the immediately preceding commit boots fine. Documented, not reported.</li>
 </ul>
 
-<h2 id="data">9. Appendix: full data</h2>
+<h2 id="data">10. Appendix: full data</h2>
 <p class="small">Every row below is a measured benchmark directory: aggregate decode tokens/second
 (C1 and C8: median of three 30-second cells; C4 and C16: single cells), and prefill tokens/second
 at three context lengths. Rows with no prefill entry were decode-only runs.</p>
