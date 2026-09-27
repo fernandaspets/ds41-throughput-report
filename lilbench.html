@@ -1,0 +1,382 @@
+<!doctype html><html><head><meta charset='utf-8'><title>lil-bench — our lane (ring codec, 32 slots, BM4096, 1M ctx, 300 W, +6000)</title><style>body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;margin:24px;max-width:1180px;color:#111}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:26px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}h3{font-size:14px;margin:18px 0 6px}table{border-collapse:collapse;margin:8px 0;font-size:13px}th,td{border:1px solid #d8d8d8;padding:4px 8px;text-align:right}th{background:#f3f3f3;text-align:right}td:first-child,th:first-child{text-align:left}.muted{color:#666}.ok{color:#0a7a28}.warn{color:#a86000;font-weight:600}.bad{color:#b00020;font-weight:600}pre{background:#f7f7f7;border:1px solid #e0e0e0;padding:8px;overflow:auto;font-size:12px}.kv{display:grid;grid-template-columns:230px 1fr;gap:2px 12px;font-size:13px}</style></head><body>
+<h1>lil-bench — our lane (ring codec, 32 slots, BM4096, 1M ctx, 300 W, +6000)</h1>
+<p class='muted'>run <code>e526b527-fa8b-4476-a374-be69e10f3ca0</code> · standard <b>standard/1</b> · profile <b>quick</b> · schema lil-bench-result/1</p>
+<h2>Integrity</h2><div class='kv'>
+<div>status</div><div class='warn'>unverified</div>
+<div>reason</div><div>the image has no runtime file manifest (built before lil-bench integrity checks)</div>
+</div>
+<h3>Image</h3><div class='kv'>
+<div>manifest</div><div><code>{&#x27;assembly&#x27;: {&#x27;alias&#x27;: &#x27;ghcr.io/local-inference-lab/vllm:jovian-judgement&#x27;, &#x27;assembly_sha256&#x27;: &#x27;67434e6d145f126caf8c9a936cdfc6f2b70d47d5c12d42ba677709cded5181a0</code></div>
+<div>contract</div><div><code>{&#x27;bootstrap&#x27;: [&#x27;/opt/venv/bin/lil-runtime-bootstrap&#x27;], &#x27;environment_contract&#x27;: &#x27;model-neutral&#x27;, &#x27;files&#x27;: {&#x27;__init__.py&#x27;: &#x27;133df69ebfb3382112c015ddcefdec1bf89089</code></div>
+<div>assembly_sha256</div><div><code>67434e6d145f126caf8c9a936cdfc6f2b70d47d5c12d42ba677709cded5181a0</code></div>
+<div>alias</div><div><code>ghcr.io/local-inference-lab/vllm:jovian-judgement</code></div>
+<div>channel</div><div><code>jovian-judgement</code></div>
+</div>
+<h2>Results</h2>
+<p>throttle verdict: <b class='warn'>power_capped</b> · p2pmark: ok</p>
+<h3>Prefill (prompt_tokens / TTFT)</h3>
+<table class=''><thead><tr><th>cell</th><th>tok/s</th><th>TTFT s</th><th>prompt tokens</th><th>samples</th></tr></thead><tbody><tr><td>ctx 8192</td><td>15422</td><td>0.531</td><td>8191</td><td>4</td></tr></tbody></table>
+<h3>Decode (aggregate tok/s)</h3>
+<table class=''><thead><tr><th>cell</th><th>agg tok/s</th><th>per-user</th><th>TTFT p50</th><th>spec accept</th><th>cap-limited</th><th>failure</th></tr></thead><tbody><tr><td>C1 @ ctx 0</td><td>252.2</td><td>252.2</td><td>0.080</td><td>2.37</td><td></td><td></td></tr><tr><td>C1 @ ctx 8192</td><td>208.0</td><td>208.0</td><td>0.337</td><td>2.27</td><td></td><td></td></tr><tr><td>C2 @ ctx 0</td><td>379.7</td><td>189.9</td><td>0.090</td><td>2.31</td><td></td><td></td></tr><tr><td>C2 @ ctx 8192</td><td>298.1</td><td>149.1</td><td>0.352</td><td>2.28</td><td>yes</td><td></td></tr></tbody></table>
+<h2>Phases</h2>
+<table class=''><thead><tr><th>phase</th><th>kind</th><th>seconds</th><th>samples</th><th>verdict</th></tr></thead><tbody><tr><td>p2pmark</td><td>p2pmark</td><td>12.2</td><td>25</td><td>ok</td></tr><tr><td>prefill 8k</td><td>prefill</td><td>4.1</td><td>8</td><td>power_capped</td></tr><tr><td>decode C1 @ 0</td><td>decode</td><td>10.6</td><td>10</td><td>ok</td></tr><tr><td>decode C1 @ 8k</td><td>decode</td><td>10.7</td><td>11</td><td>ok</td></tr><tr><td>decode C2 @ 0</td><td>decode</td><td>13.6</td><td>10</td><td>power_capped</td></tr><tr><td>decode C2 @ 8k</td><td>decode</td><td>10.8</td><td>11</td><td>power_capped</td></tr></tbody></table>
+<h3>Per-GPU telemetry by phase</h3>
+<table class=''><thead><tr><th>phase</th><th>gpu</th><th>SM MHz</th><th>mem MHz</th><th>W</th><th>W/limit</th><th>Tmax</th><th>util%</th><th>PCIe GB/s</th><th>SM drop%</th><th>throttle reasons</th><th>verdict</th></tr></thead><tbody><tr><td>p2pmark</td><td>#0</td><td>{&#x27;median&#x27;: 3127, &#x27;min&#x27;: 427, &#x27;max&#x27;: 3127}</td><td>16365</td><td>{&#x27;median&#x27;: 113.0, &#x27;max&#x27;: 127.0}</td><td>0.42</td><td>48</td><td>0</td><td>{&#x27;rx&#x27;: 4.504, &#x27;rx_peak&#x27;: 30.29, &#x27;tx&#x27;: 7.554, &#x27;tx_peak&#x27;: 31.56}</td><td>-289.9</td><td>{&amp;#x27;bit_0x400&amp;#x27;: 1.0}</td><td>ok</td></tr><tr><td>p2pmark</td><td>#1</td><td>{&#x27;median&#x27;: 3120, &#x27;min&#x27;: 427, &#x27;max&#x27;: 3120}</td><td>16365</td><td>{&#x27;median&#x27;: 132.1, &#x27;max&#x27;: 137.0}</td><td>0.46</td><td>49</td><td>0</td><td>{&#x27;rx&#x27;: 7.312, &#x27;rx_peak&#x27;: 31.232, &#x27;tx&#x27;: 7.58, &#x27;tx_peak&#x27;: 31.312}</td><td>-630.7</td><td>{&amp;#x27;bit_0x400&amp;#x27;: 1.0}</td><td>ok</td></tr><tr><td>p2pmark</td><td>#2</td><td>{&#x27;median&#x27;: 3090, &#x27;min&#x27;: 427, &#x27;max&#x27;: 3090}</td><td>16365</td><td>{&#x27;median&#x27;: 108.8, &#x27;max&#x27;: 119.0}</td><td>0.40</td><td>45</td><td>0</td><td>{&#x27;rx&#x27;: 7.81, &#x27;rx_peak&#x27;: 31.189, &#x27;tx&#x27;: 5.384, &#x27;tx_peak&#x27;: 31.172}</td><td>-623.7</td><td>{&amp;#x27;bit_0x400&amp;#x27;: 1.0}</td><td>ok</td></tr><tr><td>p2pmark</td><td>#3</td><td>{&#x27;median&#x27;: 3127, &#x27;min&#x27;: 427, &#x27;max&#x27;: 3135}</td><td>16365</td><td>{&#x27;median&#x27;: 117.6, &#x27;max&#x27;: 134.1}</td><td>0.45</td><td>41</td><td>0</td><td>{&#x27;rx&#x27;: 3.65, &#x27;rx_peak&#x27;: 25.511, &#x27;tx&#x27;: 6.755, &#x27;tx_peak&#x27;: 31.659}</td><td>-634.2</td><td>{&amp;#x27;bit_0x400&amp;#x27;: 1.0}</td><td>ok</td></tr><tr><td>prefill 8k</td><td>#0</td><td>{&#x27;median&#x27;: 2745.0, &#x27;min&#x27;: 2617, &#x27;max&#x27;: 3127}</td><td>16365</td><td>{&#x27;median&#x27;: 219.7, &#x27;max&#x27;: 295.9}</td><td>0.99</td><td>53</td><td>58</td><td>{&#x27;rx&#x27;: 12.918, &#x27;rx_peak&#x27;: 15.532, &#x27;tx&#x27;: 10.728, &#x27;tx_peak&#x27;: 11.237}</td><td>-4.3</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.375, &amp;#x27;bit_0x400&amp;#x27;: 0.625}</td><td>power_capped</td></tr><tr><td>prefill 8k</td><td>#1</td><td>{&#x27;median&#x27;: 2842.5, &#x27;min&#x27;: 2407, &#x27;max&#x27;: 3075}</td><td>16365</td><td>{&#x27;median&#x27;: 231.7, &#x27;max&#x27;: 303.8}</td><td>1.01</td><td>55</td><td>100</td><td>{&#x27;rx&#x27;: 12.664, &#x27;rx_peak&#x27;: 14.304, &#x27;tx&#x27;: 10.312, &#x27;tx_peak&#x27;: 11.97}</td><td>-22.0</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.625, &amp;#x27;bit_0x400&amp;#x27;: 0.375}</td><td>power_capped</td></tr><tr><td>prefill 8k</td><td>#2</td><td>{&#x27;median&#x27;: 2797.5, &#x27;min&#x27;: 2422, &#x27;max&#x27;: 3090}</td><td>16365</td><td>{&#x27;median&#x27;: 223.1, &#x27;max&#x27;: 301.5}</td><td>1.00</td><td>53</td><td>72</td><td>{&#x27;rx&#x27;: 10.981, &#x27;rx_peak&#x27;: 13.372, &#x27;tx&#x27;: 7.812, &#x27;tx_peak&#x27;: 12.326}</td><td>9.7</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.625, &amp;#x27;bit_0x400&amp;#x27;: 0.375}</td><td>power_capped</td></tr><tr><td>prefill 8k</td><td>#3</td><td>{&#x27;median&#x27;: 2685.0, &#x27;min&#x27;: 2437, &#x27;max&#x27;: 3135}</td><td>16365</td><td>{&#x27;median&#x27;: 223.8, &#x27;max&#x27;: 307.8}</td><td>1.03</td><td>47</td><td>100</td><td>{&#x27;rx&#x27;: 7.052, &#x27;rx_peak&#x27;: 12.94, &#x27;tx&#x27;: 9.452, &#x27;tx_peak&#x27;: 15.032}</td><td>-17.7</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.5, &amp;#x27;bit_0x400&amp;#x27;: 0.5}</td><td>power_capped</td></tr><tr><td>decode C1 @ 0</td><td>#0</td><td>{&#x27;median&#x27;: 2872.0, &#x27;min&#x27;: 2850, &#x27;max&#x27;: 2895}</td><td>16365</td><td>{&#x27;median&#x27;: 300.0, &#x27;max&#x27;: 300.1}</td><td>1.00</td><td>57</td><td>100</td><td>{&#x27;rx&#x27;: 2.045, &#x27;rx_peak&#x27;: 2.315, &#x27;tx&#x27;: 1.892, &#x27;tx_peak&#x27;: 1.963}</td><td>0.8</td><td>{&amp;#x27;bit_0x400&amp;#x27;: 1.0}</td><td>ok</td></tr><tr><td>decode C1 @ 0</td><td>#1</td><td>{&#x27;median&#x27;: 2778.5, &#x27;min&#x27;: 2745, &#x27;max&#x27;: 2895}</td><td>16365</td><td>{&#x27;median&#x27;: 299.9, &#x27;max&#x27;: 301.2}</td><td>1.00</td><td>57</td><td>100</td><td>{&#x27;rx&#x27;: 1.97, &#x27;rx_peak&#x27;: 2.071, &#x27;tx&#x27;: 1.939, &#x27;tx_peak&#x27;: 2.352}</td><td>4.9</td><td>{&amp;#x27;bit_0x400&amp;#x27;: 1.0}</td><td>ok</td></tr><tr><td>decode C1 @ 0</td><td>#2</td><td>{&#x27;median&#x27;: 2917.5, &#x27;min&#x27;: 2857, &#x27;max&#x27;: 2962}</td><td>16365</td><td>{&#x27;median&#x27;: 300.0, &#x27;max&#x27;: 300.8}</td><td>1.00</td><td>54</td><td>100</td><td>{&#x27;rx&#x27;: 1.724, &#x27;rx_peak&#x27;: 2.626, &#x27;tx&#x27;: 1.476, &#x27;tx_peak&#x27;: 1.961}</td><td>-3.4</td><td>{&amp;#x27;bit_0x400&amp;#x27;: 1.0}</td><td>ok</td></tr><tr><td>decode C1 @ 0</td><td>#3</td><td>{&#x27;median&#x27;: 2924.5, &#x27;min&#x27;: 2857, &#x27;max&#x27;: 3015}</td><td>16365</td><td>{&#x27;median&#x27;: 300.1, &#x27;max&#x27;: 300.5}</td><td>1.00</td><td>50</td><td>100</td><td>{&#x27;rx&#x27;: 1.613, &#x27;rx_peak&#x27;: 2.423, &#x27;tx&#x27;: 1.56, &#x27;tx_peak&#x27;: 2.21}</td><td>3.8</td><td>{&amp;#x27;bit_0x400&amp;#x27;: 1.0}</td><td>ok</td></tr><tr><td>decode C1 @ 8k</td><td>#0</td><td>{&#x27;median&#x27;: 2985, &#x27;min&#x27;: 2842, &#x27;max&#x27;: 3097}</td><td>16365</td><td>{&#x27;median&#x27;: 276.5, &#x27;max&#x27;: 301.4}</td><td>1.00</td><td>59</td><td>100</td><td>{&#x27;rx&#x27;: 1.952, &#x27;rx_peak&#x27;: 1.991, &#x27;tx&#x27;: 1.95, &#x27;tx_peak&#x27;: 2.023}</td><td>3.4</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.091, &amp;#x27;bit_0x400&amp;#x27;: 0.909}</td><td>ok</td></tr><tr><td>decode C1 @ 8k</td><td>#1</td><td>{&#x27;median&#x27;: 2835, &#x27;min&#x27;: 2737, &#x27;max&#x27;: 3090}</td><td>16365</td><td>{&#x27;median&#x27;: 282.1, &#x27;max&#x27;: 313.4}</td><td>1.04</td><td>60</td><td>100</td><td>{&#x27;rx&#x27;: 1.885, &#x27;rx_peak&#x27;: 2.001, &#x27;tx&#x27;: 1.882, &#x27;tx_peak&#x27;: 2.009}</td><td>0.1</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.182, &amp;#x27;bit_0x400&amp;#x27;: 0.818}</td><td>ok</td></tr><tr><td>decode C1 @ 8k</td><td>#2</td><td>{&#x27;median&#x27;: 2917, &#x27;min&#x27;: 2827, &#x27;max&#x27;: 3060}</td><td>16365</td><td>{&#x27;median&#x27;: 276.3, &#x27;max&#x27;: 297.8}</td><td>0.99</td><td>57</td><td>100</td><td>{&#x27;rx&#x27;: 1.945, &#x27;rx_peak&#x27;: 2.022, &#x27;tx&#x27;: 1.926, &#x27;tx_peak&#x27;: 1.997}</td><td>-2.5</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.182, &amp;#x27;bit_0x400&amp;#x27;: 0.818}</td><td>ok</td></tr><tr><td>decode C1 @ 8k</td><td>#3</td><td>{&#x27;median&#x27;: 2992, &#x27;min&#x27;: 2827, &#x27;max&#x27;: 3105}</td><td>16365</td><td>{&#x27;median&#x27;: 276.3, &#x27;max&#x27;: 299.0}</td><td>1.00</td><td>51</td><td>100</td><td>{&#x27;rx&#x27;: 1.867, &#x27;rx_peak&#x27;: 2.014, &#x27;tx&#x27;: 1.879, &#x27;tx_peak&#x27;: 1.971}</td><td>3.5</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.091, &amp;#x27;bit_0x400&amp;#x27;: 0.909}</td><td>ok</td></tr><tr><td>decode C2 @ 0</td><td>#0</td><td>{&#x27;median&#x27;: 2718.5, &#x27;min&#x27;: 2677, &#x27;max&#x27;: 2947}</td><td>16365</td><td>{&#x27;median&#x27;: 300.0, &#x27;max&#x27;: 303.1}</td><td>1.01</td><td>61</td><td>100</td><td>{&#x27;rx&#x27;: 2.792, &#x27;rx_peak&#x27;: 3.103, &#x27;tx&#x27;: 2.837, &#x27;tx_peak&#x27;: 3.016}</td><td>3.5</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.7, &amp;#x27;bit_0x400&amp;#x27;: 0.3}</td><td>power_capped</td></tr><tr><td>decode C2 @ 0</td><td>#1</td><td>{&#x27;median&#x27;: 2553.5, &#x27;min&#x27;: 2535, &#x27;max&#x27;: 2692}</td><td>16365</td><td>{&#x27;median&#x27;: 299.9, &#x27;max&#x27;: 302.5}</td><td>1.01</td><td>60</td><td>100</td><td>{&#x27;rx&#x27;: 2.768, &#x27;rx_peak&#x27;: 2.932, &#x27;tx&#x27;: 2.752, &#x27;tx_peak&#x27;: 2.963}</td><td>5.6</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.8, &amp;#x27;bit_0x400&amp;#x27;: 0.2}</td><td>power_capped</td></tr><tr><td>decode C2 @ 0</td><td>#2</td><td>{&#x27;median&#x27;: 2613.5, &#x27;min&#x27;: 2542, &#x27;max&#x27;: 2865}</td><td>16365</td><td>{&#x27;median&#x27;: 300.1, &#x27;max&#x27;: 301.0}</td><td>1.00</td><td>58</td><td>100</td><td>{&#x27;rx&#x27;: 2.726, &#x27;rx_peak&#x27;: 2.925, &#x27;tx&#x27;: 2.623, &#x27;tx_peak&#x27;: 2.847}</td><td>-1.2</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.4, &amp;#x27;bit_0x400&amp;#x27;: 0.6}</td><td>power_capped</td></tr><tr><td>decode C2 @ 0</td><td>#3</td><td>{&#x27;median&#x27;: 2670.0, &#x27;min&#x27;: 2632, &#x27;max&#x27;: 2857}</td><td>16365</td><td>{&#x27;median&#x27;: 300.0, &#x27;max&#x27;: 303.7}</td><td>1.01</td><td>53</td><td>100</td><td>{&#x27;rx&#x27;: 2.801, &#x27;rx_peak&#x27;: 3.274, &#x27;tx&#x27;: 2.738, &#x27;tx_peak&#x27;: 2.924}</td><td>3.5</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.2, &amp;#x27;bit_0x400&amp;#x27;: 0.8}</td><td>ok</td></tr><tr><td>decode C2 @ 8k</td><td>#0</td><td>{&#x27;median&#x27;: 2902, &#x27;min&#x27;: 2677, &#x27;max&#x27;: 3105}</td><td>16365</td><td>{&#x27;median&#x27;: 282.0, &#x27;max&#x27;: 302.9}</td><td>1.01</td><td>62</td><td>100</td><td>{&#x27;rx&#x27;: 2.425, &#x27;rx_peak&#x27;: 3.155, &#x27;tx&#x27;: 2.302, &#x27;tx_peak&#x27;: 3.002}</td><td>6.7</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.273, &amp;#x27;bit_0x400&amp;#x27;: 0.727}</td><td>power_capped</td></tr><tr><td>decode C2 @ 8k</td><td>#1</td><td>{&#x27;median&#x27;: 2812, &#x27;min&#x27;: 2512, &#x27;max&#x27;: 3067}</td><td>16365</td><td>{&#x27;median&#x27;: 288.7, &#x27;max&#x27;: 310.8}</td><td>1.04</td><td>63</td><td>100</td><td>{&#x27;rx&#x27;: 2.243, &#x27;rx_peak&#x27;: 2.966, &#x27;tx&#x27;: 2.265, &#x27;tx_peak&#x27;: 2.946}</td><td>5.2</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.455, &amp;#x27;bit_0x400&amp;#x27;: 0.545}</td><td>power_capped</td></tr><tr><td>decode C2 @ 8k</td><td>#2</td><td>{&#x27;median&#x27;: 2955, &#x27;min&#x27;: 2520, &#x27;max&#x27;: 3060}</td><td>16365</td><td>{&#x27;median&#x27;: 279.3, &#x27;max&#x27;: 297.3}</td><td>0.99</td><td>60</td><td>100</td><td>{&#x27;rx&#x27;: 2.251, &#x27;rx_peak&#x27;: 2.906, &#x27;tx&#x27;: 2.258, &#x27;tx_peak&#x27;: 3.033}</td><td>6.5</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.364, &amp;#x27;bit_0x400&amp;#x27;: 0.636}</td><td>power_capped</td></tr><tr><td>decode C2 @ 8k</td><td>#3</td><td>{&#x27;median&#x27;: 2880, &#x27;min&#x27;: 2632, &#x27;max&#x27;: 3090}</td><td>16365</td><td>{&#x27;median&#x27;: 286.3, &#x27;max&#x27;: 315.1}</td><td>1.05</td><td>55</td><td>100</td><td>{&#x27;rx&#x27;: 2.025, &#x27;rx_peak&#x27;: 2.773, &#x27;tx&#x27;: 2.127, &#x27;tx_peak&#x27;: 2.974}</td><td>3.4</td><td>{&amp;#x27;sw_power_cap&amp;#x27;: 0.182, &amp;#x27;bit_0x400&amp;#x27;: 0.818}</td><td>ok</td></tr></tbody></table>
+<h3>PCIe traffic (nvidia-smi dmon, per GPU)</h3>
+<table class=''><thead><tr><th>gpu</th><th>rx mean Gb/s</th><th>rx peak</th><th>tx mean</th><th>tx peak</th><th>samples</th></tr></thead><tbody><tr><td>GPU 0</td><td>22.64</td><td>242.32</td><td>24.23</td><td>252.48</td><td>72</td></tr><tr><td>GPU 1</td><td>24.59</td><td>249.86</td><td>25.25</td><td>250.50</td><td>72</td></tr><tr><td>GPU 2</td><td>26.58</td><td>249.51</td><td>22.41</td><td>249.38</td><td>72</td></tr><tr><td>GPU 3</td><td>20.39</td><td>204.09</td><td>24.78</td><td>253.27</td><td>72</td></tr></tbody></table>
+<h2>Hardware</h2>
+<h3>GPUs</h3>
+<table class=''><thead><tr><th>#</th><th>name</th><th>part</th><th>VBIOS</th><th>mem MiB</th><th>PL W</th><th>PL offset</th><th>mem offset</th><th>gfx offset</th><th>ECC</th><th>NUMA</th><th>BDF</th></tr></thead><tbody><tr><td>0</td><td>NVIDIA RTX PRO 6000 Blackwell Workstation Edition</td><td>900-5G144-2200-000</td><td>98.02.81.00.07</td><td>97887</td><td>300</td><td>-</td><td></td><td></td><td>[0, 0]</td><td></td><td>0000:81:00.0</td></tr><tr><td>1</td><td>NVIDIA RTX PRO 6000 Blackwell Workstation Edition</td><td>900-5G144-2200-000</td><td>98.02.81.00.07</td><td>97887</td><td>300</td><td>-</td><td></td><td></td><td>[0, 0]</td><td></td><td>0000:a1:00.0</td></tr><tr><td>2</td><td>NVIDIA RTX PRO 6000 Blackwell Workstation Edition</td><td>900-5G144-2200-000</td><td>98.02.81.00.07</td><td>97887</td><td>300</td><td>-</td><td></td><td></td><td>[0, 0]</td><td></td><td>0000:c1:00.0</td></tr><tr><td>3</td><td>NVIDIA RTX PRO 6000 Blackwell Workstation Edition</td><td>900-5G144-2200-000</td><td>98.02.81.00.07</td><td>97887</td><td>300</td><td>-</td><td></td><td></td><td>[0, 0]</td><td></td><td>0000:e1:00.0</td></tr></tbody></table>
+<h3>PCIe path per GPU</h3>
+<table class=''><thead><tr><th>gpu</th><th>narrowest link</th><th>switch</th><th>cur speed</th><th>cur width</th><th>max speed</th><th>max width</th></tr></thead><tbody><tr><td>0000:81:00.0</td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>0000:a1:00.0</td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>0000:c1:00.0</td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>0000:e1:00.0</td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table>
+<h3>ACS state</h3>
+<table class=''><thead><tr><th>gpu</th><th>ACS cap</th><th>ACS ctl</th><th>IOMMU group</th></tr></thead><tbody><tr><td>readable</td><td>True</td><td></td><td></td></tr><tr><td>unreadable</td><td>[]</td><td></td><td></td></tr><tr><td>hops_with_acs</td><td>[]</td><td></td><td></td></tr><tr><td>redirect</td><td></td><td></td><td></td></tr></tbody></table>
+<h3>nvidia-smi topo</h3><pre>	[4mGPU0	GPU1	GPU2	GPU3	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	NODE	NODE	NODE	8-15,24-31	1		N/A
+GPU1	NODE	 X 	NODE	NODE	8-15,24-31	1		N/A
+GPU2	NODE	NODE	 X 	NODE	8-15,24-31	1		N/A
+GPU3	NODE	NODE	NODE	 X 	8-15,24-31	1		N/A
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+</pre>
+<h3>P2P read matrix</h3><pre> 	[4mGPU0	GPU1	GPU2	GPU3	[0m
+ GPU0	X	OK	OK	OK	
+ GPU1	OK	X	OK	OK	
+ GPU2	OK	OK	X	OK	
+ GPU3	OK	OK	OK	X	
+
+Legend:
+
+  X    = Self
+  OK   = Status Ok
+  CNS  = Chipset not supported
+  GNS  = GPU not supported
+  TNS  = Topology not supported
+  NS   = Not supported
+  DR   = Disabled by regkey
+  U    = Unknown
+</pre>
+<h3>P2P write matrix</h3><pre> 	[4mGPU0	GPU1	GPU2	GPU3	[0m
+ GPU0	X	OK	OK	OK	
+ GPU1	OK	X	OK	OK	
+ GPU2	OK	OK	X	OK	
+ GPU3	OK	OK	OK	X	
+
+Legend:
+
+  X    = Self
+  OK   = Status Ok
+  CNS  = Chipset not supported
+  GNS  = GPU not supported
+  TNS  = Topology not supported
+  NS   = Not supported
+  DR   = Disabled by regkey
+  U    = Unknown
+</pre>
+<h3>CPU</h3><div class='kv'>
+<div>governor</div><div>ondemand</div>
+<div>max_freq_khz</div><div>4138325</div>
+<div>boost</div><div>1</div>
+<div>smt_active</div><div>1</div>
+</div>
+<table class=''><thead><tr><th>lscpu field</th><th>value</th></tr></thead><tbody><tr><td>Architecture</td><td>x86_64</td></tr><tr><td>CPU op-mode(s)</td><td>32-bit, 64-bit</td></tr><tr><td>Address sizes</td><td>48 bits physical, 48 bits virtual</td></tr><tr><td>Byte Order</td><td>Little Endian</td></tr><tr><td>CPU(s)</td><td>32</td></tr><tr><td>On-line CPU(s) list</td><td>0-31</td></tr><tr><td>Vendor ID</td><td>AuthenticAMD</td></tr><tr><td>Model name</td><td>AMD EPYC 72F3 8-Core Processor</td></tr><tr><td>CPU family</td><td>25</td></tr><tr><td>Model</td><td>1</td></tr><tr><td>Thread(s) per core</td><td>2</td></tr><tr><td>Core(s) per socket</td><td>8</td></tr><tr><td>Socket(s)</td><td>2</td></tr><tr><td>Stepping</td><td>1</td></tr></tbody></table>
+<h3>Memory</h3><div class='kv'><div>total MiB</div><div>515809</div><div>DIMMs</div><div>32</div><div>types</div><div>[&#x27;Unbuffered-DDR4&#x27;]</div></div>
+<h3>Board / BIOS</h3><div class='kv'>
+<div>sys_vendor</div><div>Supermicro</div>
+<div>product_name</div><div>AS -4124GS-TNR-01-WA004</div>
+<div>product_version</div><div>0123456789</div>
+<div>board_vendor</div><div>Supermicro</div>
+<div>board_name</div><div>H12DSG-O-CPU</div>
+<div>board_version</div><div>1.01A</div>
+<div>bios_vendor</div><div>American Megatrends Inc.</div>
+<div>bios_version</div><div>3.3</div>
+<div>bios_date</div><div>04/04/2025</div>
+<div>chassis_type</div><div>1</div>
+</div>
+<h3>Host</h3><div class='kv'>
+<div>kernel</div><div>7.0.0-34-generic</div>
+<div>machine</div><div>x86_64</div>
+<div>kernel_cmdline_relevant</div><div>[&#x27;iommu=pt&#x27;]</div>
+<div>iommu_groups</div><div>113</div>
+<div>container_os</div><div>[&#x27;PRETTY_NAME=&quot;Ubuntu 24.04.4 LTS&quot;&#x27;, &#x27;NAME=&quot;Ubuntu&quot;&#x27;]</div>
+</div>
+<pre>NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  615.71.09  Release Build  (dvs-builder@U22-I3-F05-2-4)  Fri Sep  4 22:33:33 UTC 2026
+GCC version:  gcc version 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)</pre>
+<h2>p2pmark</h2>
+<div class='kv'><div>status</div><div>ok</div><div>mode</div><div>all</div><div>size MB</div><div>256</div><div>buffer MiB</div><div>256</div><div>with model loaded</div><div>True</div></div>
+<h3>Bandwidth</h3><pre>{
+ &quot;staggered&quot;: [
+  {
+   &quot;offset&quot;: 1,
+   &quot;result&quot;: {
+    &quot;pairs&quot;: [
+     [
+      0,
+      1
+     ],
+     [
+      1,
+      2
+     ],
+     [
+      2,
+      3
+     ],
+     [
+      3,
+      0
+     ]
+    ],
+    &quot;pair_gbps&quot;: [
+     27.907,
+     27.892,
+     27.892,
+     27.893
+    ],
+    &quot;avg_gbps&quot;: 27.896,
+    &quot;total_gbps&quot;: 111.567
+   }
+  },
+  {
+   &quot;offset&quot;: 2,
+   &quot;result&quot;: {
+    &quot;pairs&quot;: [
+     [
+      0,
+      2
+     ],
+     [
+      1,
+      3
+     ],
+     [
+      2,
+      0
+     ],
+     [
+      3,
+      1
+     ]
+    ],
+    &quot;pair_gbps&quot;: [
+     27.904,
+     27.931,
+     27.889,
+     27.87
+    ],
+    &quot;avg_gbps&quot;: 27.898,
+    &quot;total_gbps&quot;: 111.48
+   }
+  },
+  {
+   &quot;offset&quot;: 3,
+   &quot;result&quot;: {
+    &quot;pairs&quot;: [
+     [
+      0,
+      3
+     ],
+     [
+      1,
+      0
+     ],
+     [
+      2,
+      1
+     ],
+     [
+      3,
+      2
+     ]
+    ],
+    &quot;pair_gbps&quot;: [
+     27.833,
+     27.861,
+     27.814,
+     27.823
+    ],
+    &quot;avg_gbps&quot;: 27.833,
+    &quot;total_gbps&quot;: 111.255
+   }
+  }
+ ],
+ &quot;ring&quot;: {
+  &quot;pairs&quot;: [
+   [
+    0,
+    1
+   ],
+   [
+    1,
+    2
+   ],
+   [
+    2,
+    3
+   ],
+   [
+    3,
+    0
+   ]
+  ],
+  &quot;pair_gbps&quot;: [
+   27.907,
+   27.892,
+   27.892,
+   27.893
+  ],
+  &quot;avg_gbps&quot;: 27.896,
+  &quot;total_gbps&quot;: 111.567
+ },
+ &quot;single_writer_gbps&quot;: [
+  28.179,
+  28.154,
+  28.147,
+  28.123
+ ],
+ &quot;all_to_all_gpu_gbps&quot;: [
+  16.448,
+  16.445,
+  16.289,
+  16.312
+ ],
+ &quot;all_to_all_total_gbps&quot;: 65.495,
+ &quot;pcie_link_score&quot;: 0.44689,
+ &quot;dense_interconnect_score&quot;: 0.581574
+}</pre>
+<h3>Latency</h3><pre>{
+ &quot;sequential_us&quot;: [
+  [
+   0.0,
+   1.169,
+   1.188,
+   1.202
+  ],
+  [
+   1.176,
+   0.0,
+   1.181,
+   1.173
+  ],
+  [
+   1.177,
+   1.185,
+   0.0,
+   1.18
+  ],
+  [
+   1.188,
+   1.171,
+   1.178,
+   0.0
+  ]
+ ],
+ &quot;staggered_avg_us&quot;: [
+  1.183,
+  1.177,
+  1.183
+ ],
+ &quot;single_reader_all_peers_us&quot;: [
+  1.183,
+  1.173,
+  1.182,
+  1.174
+ ],
+ &quot;all_read_all_peers_us&quot;: [
+  1.165,
+  1.165,
+  1.165,
+  1.163
+ ],
+ &quot;min_sequential_us&quot;: 1.169,
+ &quot;avg_sequential_us&quot;: 1.181,
+ &quot;mean_full_load_us&quot;: 1.164,
+ &quot;effective_full_load_us&quot;: 1.165
+}</pre>
+<h3>All-reduce</h3><pre>[
+ {
+  &quot;size_bytes&quot;: 256,
+  &quot;custom_us&quot;: 7.803,
+  &quot;nccl_us&quot;: 19.438,
+  &quot;custom_bus_bw_gbps&quot;: 0.049,
+  &quot;nccl_bus_bw_gbps&quot;: 0.02,
+  &quot;best_bus_bw_gbps&quot;: 0.049,
+  &quot;winner&quot;: &quot;custom&quot;,
+  &quot;ratio&quot;: 2.491
+ },
+ {
+  &quot;size_bytes&quot;: 512,
+  &quot;custom_us&quot;: 8.208,
+  &quot;nccl_us&quot;: 19.33,
+  &quot;custom_bus_bw_gbps&quot;: 0.094,
+  &quot;nccl_bus_bw_gbps&quot;: 0.04,
+  &quot;best_bus_bw_gbps&quot;: 0.094,
+  &quot;winner&quot;: &quot;custom&quot;,
+  &quot;ratio&quot;: 2.355
+ },
+ {
+  &quot;size_bytes&quot;: 1024,
+  &quot;custom_us&quot;: 7.771,
+  &quot;nccl_us&quot;: 28.341,
+  &quot;custom_bus_bw_gbps&quot;: 0.198,
+  &quot;nccl_bus_bw_gbps&quot;: 0.054,
+  &quot;best_bus_bw_gbps&quot;: 0.198,
+  &quot;winner&quot;: &quot;custom&quot;,
+  &quot;ratio&quot;: 3.647
+ },
+ {
+  &quot;size_bytes&quot;: 2048,
+  &quot;custom_us&quot;: 7.442,
+  &quot;nccl_us&quot;: 28.832,
+  &quot;custom_bus_bw_gbps&quot;: 0.413,
+  &quot;nccl_bus_bw_gbps&quot;: 0.107,
+  &quot;best_bus_bw_gbps&quot;: 0.413,
+  &quot;winner&quot;: &quot;custom&quot;,
+  &quot;ratio&quot;: 3.874
+ },
+ {
+  &quot;size_bytes&quot;: 4096,
+  &quot;custom_us&quot;: 7.755,
+  &quot;nccl_us&quot;: 20.848,
+  &quot;custom_bus_bw_gbps&quot;: 0.792,
+  &quot;nccl_bus_bw_gbps&quot;: 0.295,
+  &quot;best_bus_bw_gbps&quot;: 0.792,
+  &quot;winner&quot;: &quot;custom&quot;,
+  &quot;ratio&quot;: 2.688
+ },
+ {
+  &quot;size_bytes&quot;: 8192,
+  &quot;custom_us&quot;: 8.902,
+  &quot;nccl_us&quot;: 20.139,
+  &quot;custom_bus_bw_gbps&quot;: 1.38,
+  &quot;nccl_bus_bw_gbps&quot;: 0.61,
+  &quot;best_bus_bw_gbps&quot;: 1.38,
+  &quot;winner&quot;: &quot;custom&quot;,
+  &quot;ratio&quot;: 2.262
+ },
+ {
+  &quot;size_bytes&quot;: 16384,
+  &quot;custom_us&quot;: 11.235,
+  &quot;nccl_us&quot;: 19.686,
+  &quot;custom_bus_bw_gbps&quot;: 2.187,
+  &quot;nccl_bus_bw_gbps&quot;: 1.248,
+  &quot;best_bus_bw_gbps&quot;: 2.187,
+  &quot;winner&quot;: &quot;custom&quot;,
+  &quot;ratio&quot;: 1.752
+ },
+ {
+  &quot;size_bytes&quot;: 32768,
+  &quot;custom_us&quot;: 13.392,
+  &quot;nccl_us&quot;: 21.139,
+  &quot;custom_bus_bw_gbps&quot;: 3.67,
+  &quot;n</pre>
+<p class='muted' style='margin-top:28px'>rendered from /tmp/lilbench-run.json.gz by libench_report.py</p>
+</body></html>
